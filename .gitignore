@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+
+# OS / editor files
+.DS_Store
+.vscode/
+
+# Test / type / cache artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+
+# Generated data outputs
+src/data/process/processed_*.csv
+src/data/process/*.csv
