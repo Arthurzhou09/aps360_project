@@ -13,5 +13,6 @@ __pycache__/
 coverage.xml
 
 # Generated data outputs
-src/data/process/processed_*.csv
+src/data/raw/dms
+src/data/raw/aa_index
 src/data/process/*.csv
