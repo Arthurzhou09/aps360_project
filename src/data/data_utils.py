@@ -1,7 +1,7 @@
 import pandas as pd
+from aaindex import aaindex1
 
-
-def load_data(file: str, type='single') -> pd.DataFrame:
+def load_data(file: str, type: str ='single') -> pd.DataFrame:
     """
     Loads the DMS data from the given file path.
     args:
@@ -11,7 +11,6 @@ def load_data(file: str, type='single') -> pd.DataFrame:
     if type not in ['single', 'pair']:
         raise ValueError(f"Invalid type: {type}. Must be 'single' or 'pair'.")
     
-
     try:
         if type == 'single':
             sheet_name = 'S2 Missense mutation fitnesses'
@@ -30,6 +29,18 @@ def load_data(file: str, type='single') -> pd.DataFrame:
     print(f"Data loaded. Prior size: {prior_size}, After dropna: {data.shape[0]}")
     return data
 
+def load_aa_index(Id: str):
+    """
+    Loads the amino acid index data from the given record id
+    args:
+        Id: aaindex1 record
+    returns:
+        data: a dictionary of the aaindex1 record data
+        values: a list of the aa properties in the aaindex1 record data
+    """
+    data = aaindex1[Id]
+    values = data.values()
+    return data, values
 
 def compare_single_fitness(single_df: pd.DataFrame, double_df: pd.DataFrame, err_dev: float = 1.0) -> tuple[pd.DataFrame, dict, list[int], list[int]]:
     """
@@ -48,7 +59,7 @@ def compare_single_fitness(single_df: pd.DataFrame, double_df: pd.DataFrame, err
     """
     single_df = single_df.copy()
     double_df = double_df.copy()
-    
+
     if 'Code' not in single_df.columns:
         single_df['Code'] = single_df['WT AA'] + single_df['Ambler Position'].astype(int).astype(str) + single_df['Mutant AA']
 
@@ -103,8 +114,8 @@ def compare_single_fitness(single_df: pd.DataFrame, double_df: pd.DataFrame, err
 
 
 
-def expand_double_mutants(data: pd.DataFrame) -> pd.DataFrame:
-    """Expand each double-mutant row into two single-mutation-style rows."""
+"""def expand_double_mutants(data: pd.DataFrame) -> pd.DataFrame:
+    #Expand each double-mutant row into two single-mutation-style rows.
     first_mutant = data.assign(
         Code=data['WT AA 1'] + data['Ambler Position'].astype(int).astype(str) + data['Mut AA 1'],
         Mutant_Number=1,
@@ -135,4 +146,4 @@ def expand_double_mutants(data: pd.DataFrame) -> pd.DataFrame:
         'Epistasis',
     ]
 
-    return pd.concat([first_mutant[columns], second_mutant[columns]], ignore_index=True)
+    return pd.concat([first_mutant[columns], second_mutant[columns]], ignore_index=True)"""
