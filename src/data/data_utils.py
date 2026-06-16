@@ -127,32 +127,6 @@ def load_cif_structure(file_path:str, Id:str) -> PDB.Structure.Structure:
     structure = parser.get_structure(Id, file_path)
     return structure
 
-# euclidean distance matrix (N,N,3)
-def _euclidean_distance_matrix(coords: np.ndarray) -> np.ndarray:
-    """
-    Euclidean distance matrix for atom coordinates
-    args:
-        coords: (N, 3) array of atomic coordinates
-    returns:   
-        dist: (N, N) array of pairwise distances
-    """
-    diff = coords[:, None, :] - coords[None, :, :]
-    dist = np.sqrt(np.sum(diff**2, axis=-1))
-    return dist
-
-def _k_nearest_residues(distance_matrix: np.ndarray, k: int) -> np.ndarray:
-    """
-    Get nearest residues based on distance matrix
-    args:
-        distance_matrix: (N, N) array of pairwise distances
-        k: number of nearest neighbors to return
-    returns:
-        nearest_indices: (N, k) array of indices of nearest neighbors for each residue
-    """
-    d_m = distance_matrix.copy()
-    np.fill_diagonal(d_m, np.inf)
-    nearest_indices = np.argsort(d_m, axis=1)[:,:k]
-    return nearest_indices
 
 
 def parse_structure(structure: PDB.Structure.Structure, k_neighbors: int = 20):
@@ -163,10 +137,7 @@ def parse_structure(structure: PDB.Structure.Structure, k_neighbors: int = 20):
         k_neighbors: number of nearest neighbors (euclidean distance) to search
     returns:
         sequence: amino acid sequence of the structure
-        atomic_coords: a dictionary of atomic coordinates for CA, N, C, O atoms
-        distance_matrices: a dictionary of pairwise distance matrices for CA, N, C, O atoms
-        nearest_neighbors: a dictionary of nearest neighbor indices for CA, N, C, O atoms
-
+        atomic_pos: array of shape (N, 4, 3) with atomic coordinates for CA, N, C, O atoms
     """
     # For Tem-1 beta, there is only one chain
     model = structure[0]
@@ -183,38 +154,13 @@ def parse_structure(structure: PDB.Structure.Structure, k_neighbors: int = 20):
     c_atoms_pos = np.array([atom.get_coord() for res in residues for atom in res if atom.get_id() == 'C'])
     o_atoms_pos = np.array([atom.get_coord() for res in residues for atom in res if atom.get_id() == 'O'])
 
-    ca_diff = _euclidean_distance_matrix(ca_atoms_pos)
-    n_diff = _euclidean_distance_matrix(n_atoms_pos)
-    c_diff = _euclidean_distance_matrix(c_atoms_pos)
-    o_diff = _euclidean_distance_matrix(o_atoms_pos)
+    atomic_pos = np.stack([ca_atoms_pos, n_atoms_pos, c_atoms_pos, o_atoms_pos], axis=1)
 
-    ca_near = _k_nearest_residues(ca_diff, k=k_neighbors)
-    n_near = _k_nearest_residues(n_diff, k=k_neighbors)
-    c_near = _k_nearest_residues(c_diff, k=k_neighbors)
-    o_near = _k_nearest_residues(o_diff, k=k_neighbors)
 
-    atomic_coords = {
-        'CA': ca_atoms_pos,
-        'N': n_atoms_pos,
-        'C': c_atoms_pos,
-        'O': o_atoms_pos
-    }
-    distance_matrices = {
-        'CA': ca_diff,
-        'N': n_diff,
-        'C': c_diff,
-        'O': o_diff
-    }
-    nearest_neighbors = {
-        'CA': ca_near,
-        'N': n_near,
-        'C': c_near,
-        'O': o_near
-    }
     # sequence from the modeled chain
     sequence = ''.join(str(peptide.get_sequence()) for peptide in PPBuilder().build_peptides(chain))
 
-    return sequence, atomic_coords, distance_matrices, nearest_neighbors
+    return sequence, atomic_pos,
 
 
 

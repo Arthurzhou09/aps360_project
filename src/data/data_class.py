@@ -21,7 +21,7 @@ class DataClass(Dataset):
         raise NotImplementedError
     
 
-class ProteinData(Data):
+class ProteinGraphData(Data):
     def __init__(
         self,
         distance_features=None,
