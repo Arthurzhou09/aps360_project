@@ -24,10 +24,10 @@ if __name__ == "__main__":
     single_df = single_df[~single_df.index.isin(error_inter_single)]
 
     # parse the data
-    single_df['Code'] = single_df['WT AA'] + single_df['Ambler Position'].astype(int).astype(str) + single_df['Mutant AA']
+    single_df['Code'] = single_df['WT AA'] + "_" + single_df['Ambler Position'].astype(int).astype(str) + "_" + single_df['Mutant AA']
     processed_single_data = single_df[['Code', 
                                        'Fitness', 'Estimated error in fitness']]
-    double_df['Code'] = double_df['WT AA 1'] + double_df['WT AA 2'] + double_df['Ambler Position'].astype(int).astype(str) + double_df['Mut AA 1'] + double_df['Mut AA 2']
+    double_df['Code'] = double_df['WT AA 1'] + "_" + double_df['WT AA 2'] + "_" + double_df['Ambler Position'].astype(int).astype(str) + "_" + double_df['Mut AA 1'] + "_" + double_df['Mut AA 2']
     processed_data = double_df[['Code', 
                                 'Mut 1 Fitness','Mut 1 Fitness Error', 
                                 'Mut 2 Fitness', 'Mut 2 Fitness Error', 

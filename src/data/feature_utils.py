@@ -148,6 +148,8 @@ def build_distance_features(positions: np.ndarray, k: int = 48, directed: bool =
 		positions: (N,4, 3) array of atomic coordinates
 		k: number of nearest neighbors to search.
 		directed: whether to create directed edges (i -> j) or undirected edges (i <-> j).
+	returns:
+		edge_attr: (E, num_rbf) array of edge attributes for each edge in the graph.
 	"""
 	edge_index = _build_backbone_edge_index(positions, k=k, directed=directed)
 
@@ -161,49 +163,74 @@ def build_distance_features(positions: np.ndarray, k: int = 48, directed: bool =
 	return np.stack(rbf_features, axis=-1)
 
 
-def encode_sequence_features(sequence: str) -> np.ndarray:
+def encode_sequence_features(code: str, sequence: np.ndarray[int]) -> tuple[np.ndarray, np.ndarray]:
 	"""
-	Encode a protein sequence.
+	One-hot encode a protein sequence.
 	args:
-		sequence: amino acid sequence of the protein
+		code: WT_ambler_Mut or WT1_WT2_ambler_Mut1_Mut2
+		sequence: list of residue indices
+	returns:
+		seq: mutated sequence
+		mut_indices: indices of mutated residues
+
 	"""
-	encoded = np.array([RESIDUE_LETTERS.index(i) for i in sequence.upper()])
-	return encoded
+	split = code.split("_")  # Extract the amino acid sequence from the 
+	seq = sequence.copy() # list[int]
+	
+
+	assert seq[int(split[1]) - 1] == RESIDUE_LETTERS.index(split[0]), "WT amino acid does not match sequence at position"
+	
+	if split[1].isnumeric(): # 
+		mutation_indices = [int(split[1])]
+		seq[int(split[1]) - 1] = RESIDUE_LETTERS.index(split[2])  # Update the sequence with the mutation
+	else:
+		muts = [split[3], split[4]]
+		mutation_indices = [int(split[2]), int(split[2]) +1]
+		wts = [split[0], split[1]]
+		for wt, pos, mut in zip(wts, mutation_indices, muts):
+			assert seq[pos - 1] == RESIDUE_LETTERS.index(wt), "WT amino acid does not match sequence at position"
+			seq[pos - 1] = RESIDUE_LETTERS.index(mut)  # Update the sequence with the mutation
+	
+	return np.array(seq), np.array(mutation_indices)
 
 
-def build_residue_node_features(
-	sequence: str,
-	numeric_features: Optional[np.ndarray] = None,
-	include_one_hot: bool = True,
-) -> np.ndarray:
-	"""Build node features for a residue-level GNN.
 
-	Args:
-		sequence: amino-acid sequence.
-		numeric_features: optional array of shape (L, F) with extra residue features.
-		include_one_hot: whether to include residue identity.
-
-	Returns:
-		Array of shape (L, D).
+def encode_aaindex_features(list_properties: list[dict[str, float]], sequence: np.ndarray[int]) -> tuple[np.ndarray, np.ndarray]:
 	"""
-	features = []
+	build node features for each residue in the sequence.
+	args:
+		list_properties: list of dicts mapping amino acid index to property value.
+		sequence: resiudes encoded as integers
+	returns:
+		propeties: (N ,F), node indices are mapped to residue order
+		aaindex_ids: list of aaindex record ids corresponding to the properties
+	"""
+	aaindex_ids= []
+	all_properties=[]
+	for p in list_properties:
+		aa_data = {RESIDUE_LETTERS.index(aa): prop for aa,prop in p.items() if aa != 'id'}
+		all_properties.append([aa_data[residue] for residue in sequence ])
+		aaindex_ids.append(p['id'])
+	
+	return np.stack(all_properties, axis=0), np.array(aaindex_ids)
 
-	if include_one_hot:
-		features.append(build_residue_one_hot(sequence))
 
-	if numeric_features is not None:
-		numeric_features = np.asarray(numeric_features, dtype=np.float32)
-		if numeric_features.shape[0] != len(sequence):
-			raise ValueError(
-				"numeric_features must have one row per residue "
-				f"(expected {len(sequence)}, got {numeric_features.shape[0]})."
-			)
-		features.append(numeric_features)
+def build_node_features(code, sequence, list_aa_properties):
+	"""
+	Build node features.
+	args:
+		code: WT_ambler_Mut or WT1_WT2_ambler_Mut1_Mut2
+		sequence: list of residue indices
+		list_properties: list of dicts mapping amino acid index to property value.
+	returns:
+		node_features: (N, F) array of node features for each residue
+		mutation_indices: indices of mutated residues
+	"""
+	encoded_sequence, _ = encode_sequence_features(code, sequence)
+	aaindex_features, _ = encode_aaindex_features(list_aa_properties, encoded_sequence)
+	node_features = np.concatenate([encoded_sequence[:,None], aaindex_features], axis=1) # (N, F)
 
-	if not features:
-		return np.zeros((len(sequence), 0), dtype=np.float32)
-
-	return np.concatenate(features, axis=1)
+	return node_features
 
 
 

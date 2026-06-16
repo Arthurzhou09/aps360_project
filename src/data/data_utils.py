@@ -42,7 +42,7 @@ def load_aa_index(Id: str):
         values: a list of the aa properties in the aaindex1 record data
     """
     data = aaindex1[Id]
-    values = data.values()
+    values = data.values
     return data, values
 
 def compare_single_fitness(single_df: pd.DataFrame, double_df: pd.DataFrame, err_dev: float = 1.0) -> tuple[pd.DataFrame, dict, list[int], list[int]]:
