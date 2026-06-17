@@ -10,8 +10,8 @@ from data.data_utils import load_data, compare_single_fitness
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_dir', type=str, required=True, help='Path to the directory containing the .xlsx files containing the DMS data')
-    parser.add_argument('--output_file', type=str, default='/Users/arthurzhou/github/aps360_project/src/data/process/processed_data.csv', help='Path to save the processed data as a CSV file')
-    parser.add_argument('--error_threshold', type=float, default=1.0, help='Error threshold for filtering double mutant entries based on single mutant fitness values')
+    parser.add_argument('--output_dir', type=str, default='/Users/arthurzhou/github/aps360_project/src/data/process', help='Path to save the processed data as CSV files')
+    parser.add_argument('--error_threshold', type=float, default=0.0, help='Error threshold for filtering double mutant entries based on single mutant fitness values')
     args = parser.parse_args()
 
     # processing should load both dfs in at the same time 
@@ -25,15 +25,22 @@ if __name__ == "__main__":
 
     # parse the data
     single_df['Code'] = single_df['WT AA'] + "_" + single_df['Ambler Position'].astype(int).astype(str) + "_" + single_df['Mutant AA']
-    processed_single_data = single_df[['Code', 
+    single_df['Single'] = 1
+    processed_single_data = single_df[['Single', 'Code', 
                                        'Fitness', 'Estimated error in fitness']]
-    double_df['Code'] = double_df['WT AA 1'] + "_" + double_df['WT AA 2'] + "_" + double_df['Ambler Position'].astype(int).astype(str) + "_" + double_df['Mut AA 1'] + "_" + double_df['Mut AA 2']
-    processed_data = double_df[['Code', 
-                                'Mut 1 Fitness','Mut 1 Fitness Error', 
-                                'Mut 2 Fitness', 'Mut 2 Fitness Error', 
-                                'Double Mutant Fitness', 'Double Mutant Fitness Error',
-                                'Epistasis']]
+    processed_single_data['Epistatsis'] = -111
 
-    os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
-    processed_data.to_csv(args.output_file, index=False)
+
+    double_df['Code'] = double_df['WT AA 1'] + "_" + double_df['WT AA 2'] + "_" + double_df['Ambler Position'].astype(int).astype(str) + "_" + double_df['Mut AA 1'] + "_" + double_df['Mut AA 2']
+    double_df['Single'] = 0
+    processed_pair_data = double_df[['Single', 'Code', 
+                                'Double Mutant Fitness', 'Double Mutant Fitness Error',
+                                'Epistasis']].rename(columns={
+                                    'Double Mutant Fitness': 'Fitness',
+                                    'Double Mutant Fitness Error': 'Estimated error in fitness'})
+    
+    processed_data = pd.concat([processed_single_data, processed_pair_data], ignore_index=True)
+
+    os.makedirs(os.path.dirname(args.output_dir), exist_ok=True)
+    processed_data.to_csv(os.path.join(args.output_dir, "dms_processed.csv"), index=False)
     print(f"Processed data saved to {args.output_file}")

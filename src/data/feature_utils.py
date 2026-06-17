@@ -91,7 +91,7 @@ def _k_nearest_residues(distance_matrix: np.ndarray, k: int) -> np.ndarray:
     return nearest_indices
 
 
-def _build_backbone_edge_index(positions: np.ndarray, k: int = 20,directed:bool = True) -> np.ndarray:
+def build_backbone_edge_index(positions: np.ndarray, k: int = 20,directed:bool = True) -> np.ndarray:
 	"""
 	Call build distance features prefered, will return edge indices for knn backbone connectivity for a protein chain.
 
@@ -141,7 +141,7 @@ def build_rbf(pos_1: np.ndarray, pos_2: np.ndarray, edge_indices: np.ndarray,
 	return rbf
 
 
-def build_distance_features(positions: np.ndarray, k: int = 48, directed: bool = True) -> np.ndarray:
+def build_distance_features(positions: np.ndarray, k: int = 20, directed: bool = True) -> np.ndarray:
 	"""
 	Compute knn atomic distance features (edge attributes).
 	args:
@@ -151,7 +151,7 @@ def build_distance_features(positions: np.ndarray, k: int = 48, directed: bool =
 	returns:
 		edge_attr: (E, num_rbf) array of edge attributes for each edge in the graph.
 	"""
-	edge_index = _build_backbone_edge_index(positions, k=k, directed=directed)
+	edge_index = build_backbone_edge_index(positions, k=k, directed=directed)
 
 	rbf_features = []
 	for atom_i in range(positions.shape[1]):
@@ -194,28 +194,26 @@ def encode_sequence_features(code: str, sequence: np.ndarray[int]) -> tuple[np.n
 	return np.array(seq), np.array(mutation_indices)
 
 
-
-def encode_aaindex_features(list_properties: list[dict[str, float]], sequence: np.ndarray[int]) -> tuple[np.ndarray, np.ndarray]:
+import pandas as pd
+def encode_aaindex_features(aaindex_df: pd.DataFrame, sequence: np.ndarray[int]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 	"""
 	build node features for each residue in the sequence.
 	args:
-		list_properties: list of dicts mapping amino acid index to property value.
+		aa_index_df: DataFrame mapping aaindex IDs to lists of property values.
 		sequence: resiudes encoded as integers
 	returns:
 		propeties: (N ,F), node indices are mapped to residue order
 		aaindex_ids: list of aaindex record ids corresponding to the properties
 	"""
-	aaindex_ids= []
-	all_properties=[]
-	for p in list_properties:
-		aa_data = {RESIDUE_LETTERS.index(aa): prop for aa,prop in p.items() if aa != 'id'}
-		all_properties.append([aa_data[residue] for residue in sequence ])
-		aaindex_ids.append(p['id'])
-	
-	return np.stack(all_properties, axis=0), np.array(aaindex_ids)
+
+	aa_order = aaindex_df.columns[1:].tolist()
+	property_arr = aaindex_df.to_numpy()[:,1:]
+	id_array = property_arr[:, 0]
+
+	return property_arr, id_array, aa_order
 
 
-def build_node_features(code, sequence, list_aa_properties):
+def build_node_features(code, sequence, aaindex_df):
 	"""
 	Build node features.
 	args:
@@ -224,69 +222,12 @@ def build_node_features(code, sequence, list_aa_properties):
 		list_properties: list of dicts mapping amino acid index to property value.
 	returns:
 		node_features: (N, F) array of node features for each residue
-		mutation_indices: indices of mutated residues
 	"""
 	encoded_sequence, _ = encode_sequence_features(code, sequence)
-	aaindex_features, _ = encode_aaindex_features(list_aa_properties, encoded_sequence)
+	aaindex_features, _,_ = encode_aaindex_features(aaindex_df, encoded_sequence)
 	node_features = np.concatenate([encoded_sequence[:,None], aaindex_features], axis=1) # (N, F)
 
 	return node_features
 
 
 
-
-
-### not yet here
-
-def build_protein_graph(
-	sequence: str,
-	numeric_features: Optional[np.ndarray] = None,
-	bidirectional_edges: bool = True,
-) -> ProteinGraph:
-	"""Create a minimal residue-level protein graph skeleton."""
-	node_features = build_residue_node_features(sequence, numeric_features=numeric_features)
-	edge_index = build_backbone_edge_index(len(sequence), directed=not bidirectional_edges)
-	edge_attr = build_backbone_edge_attr(len(sequence), directed=not bidirectional_edges)
-	return ProteinGraph(
-		sequence=sequence,
-		node_features=node_features,
-		edge_index=edge_index,
-		edge_attr=edge_attr,
-	)
-
-
-class ProteinGraphDataset(Dataset):
-	"""Torch dataset wrapper for precomputed protein graphs."""
-
-	def __init__(self, graphs: Sequence[ProteinGraph]):
-		self.graphs = list(graphs)
-
-	def __len__(self) -> int:
-		return len(self.graphs)
-
-	def __getitem__(self, index: int):
-		graph = self.graphs[index]
-		item = {
-			"sequence": graph.sequence,
-			"node_features": torch.as_tensor(graph.node_features, dtype=torch.float32),
-			"edge_index": torch.as_tensor(graph.edge_index, dtype=torch.long),
-			"edge_attr": torch.as_tensor(graph.edge_attr, dtype=torch.float32),
-		}
-		if graph.target is not None:
-			item["target"] = torch.tensor(graph.target, dtype=torch.float32)
-		return item
-
-
-def make_protein_graph_loader(
-	graphs: Sequence[ProteinGraph],
-	batch_size: int = 1,
-	shuffle: bool = False,
-	num_workers: int = 0,
-) -> DataLoader:
-	"""Create a DataLoader for a list of protein graphs."""
-	return DataLoader(
-		ProteinGraphDataset(graphs),
-		batch_size=batch_size,
-		shuffle=shuffle,
-		num_workers=num_workers,
-	)

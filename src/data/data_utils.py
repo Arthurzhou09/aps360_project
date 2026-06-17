@@ -129,12 +129,11 @@ def load_cif_structure(file_path:str, Id:str) -> PDB.Structure.Structure:
 
 
 
-def parse_structure(structure: PDB.Structure.Structure, k_neighbors: int = 20):
+def parse_structure(structure: PDB.Structure.Structure,):
     """
     Parse a PDB structure to extract sequence, and atomic corodinates for CA, N, C, O atoms.
     args:
         structure: a Bio.PDB structure object
-        k_neighbors: number of nearest neighbors (euclidean distance) to search
     returns:
         sequence: amino acid sequence of the structure
         atomic_pos: array of shape (N, 4, 3) with atomic coordinates for CA, N, C, O atoms

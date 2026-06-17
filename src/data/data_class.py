@@ -27,10 +27,9 @@ class ProteinGraphData(Data):
         distance_features=None,
         node_features=None,
         sequence=None,
-        res_idx=None,
         edge_index=None,
-        seq_mask=None,
         mutation_idx=None,
+        fitness=None,
     ):
         """
         A class representing single or pairwise mutation data.
@@ -39,12 +38,11 @@ class ProteinGraphData(Data):
             distance_features: distances between residues (pairwise distances between N, Ca, C, O),
             node_features: additional numeric features for each residue, expected shape [N, F], where F is the number of features.
             sequence: Amino acid sequence of the protein, expected shape [N], where N is the number of residues.
-            res_idx: Indices indicating the residue position (Ambler) in a chain, expected shape [N_c], where N_c is the number of residues.
             edge_index: Edge indices representing the connectivity of residues, expected shape [2, E]
-            seq_mask: Mask indicating valid residues in the sequence, expected shape [N,]
-            mutation_idx: Indice(s) of the mutated residue(s), expected shape [N]
+            mutation_index: Mask indicating mutation positions in the sequence, expected shape [N,]
+            fitness: Fitness value for the mutation(s).
         """
-        super(ProteinData, self).__init__()
+        super(ProteinGraphData, self).__init__()
         if distance_features is not None:
             self.distance_features = distance_features
         if node_features is not None:
@@ -53,10 +51,7 @@ class ProteinGraphData(Data):
             self.edge_index = edge_index
         if sequence is not None:
             self.sequence = sequence
-        if res_idx is not None:
-            self.res_idx = res_idx
-            self.num_nodes = len(res_idx)
-        if seq_mask is not None:
-            self.seq_mask = seq_mask
         if mutation_idx is not None:
             self.mutation_idx = mutation_idx
+        if fitness is not None:
+            self.fitness = fitness
