@@ -1,5 +1,8 @@
 import pandas as pd
 from aaindex import aaindex1
+import Bio.PDB as PDB
+from Bio.PDB.Polypeptide import PPBuilder, is_aa
+import numpy as np
 
 def load_data(file: str, type: str ='single') -> pd.DataFrame:
     """
@@ -111,6 +114,52 @@ def compare_single_fitness(single_df: pd.DataFrame, double_df: pd.DataFrame, err
 
     return merged_df, stats, drop_indices_single, drop_indices_double
 
+
+
+def load_cif_structure(file_path:str, Id:str) -> PDB.Structure.Structure:
+    """
+    Loads mmCIF structure from the given file path
+    args:
+        file_path: path to the mmCIF file
+        Id: structure PDBId
+    """
+    parser = PDB.MMCIFParser()
+    structure = parser.get_structure(Id, file_path)
+    return structure
+
+
+
+def parse_structure(structure: PDB.Structure.Structure,):
+    """
+    Parse a PDB structure to extract sequence, and atomic corodinates for CA, N, C, O atoms.
+    args:
+        structure: a Bio.PDB structure object
+    returns:
+        sequence: amino acid sequence of the structure
+        atomic_pos: array of shape (N, 4, 3) with atomic coordinates for CA, N, C, O atoms
+    """
+    # For Tem-1 beta, there is only one chain
+    model = structure[0]
+    chain = model['A']
+    residues = [res for res in chain.get_residues() if is_aa(res, standard=True)]
+
+    # might want to drop unresolved N-terminal residues if they are missing from the structure. (as in 1BTL)
+    # Finberg does the whole thing, since it can effect expression and localization whihc affect fitness. 
+    # do we want to decouple the active region from the N-terminal???
+
+    # atom pos
+    ca_atoms_pos = np.array([atom.get_coord() for res in residues for atom in res if atom.get_id() == 'CA'])
+    n_atoms_pos = np.array([atom.get_coord() for res in residues for atom in res if atom.get_id() == 'N'])
+    c_atoms_pos = np.array([atom.get_coord() for res in residues for atom in res if atom.get_id() == 'C'])
+    o_atoms_pos = np.array([atom.get_coord() for res in residues for atom in res if atom.get_id() == 'O'])
+
+    atomic_pos = np.stack([ca_atoms_pos, n_atoms_pos, c_atoms_pos, o_atoms_pos], axis=1)
+
+
+    # sequence from the modeled chain
+    sequence = ''.join(str(peptide.get_sequence()) for peptide in PPBuilder().build_peptides(chain))
+
+    return sequence, atomic_pos,
 
 
 
