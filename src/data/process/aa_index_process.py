@@ -1,5 +1,4 @@
 import sys
-sys.path.append('/Users/arthurzhou/github/aps360_project')
 from data.data_utils import load_aa_index
 import argparse
 from glob import glob

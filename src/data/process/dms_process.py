@@ -5,7 +5,6 @@ import sys
 from data.data_utils import load_data, compare_single_fitness
 
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_dir', type=str, required=True, help='Path to the directory containing the .xlsx files containing the DMS data')
