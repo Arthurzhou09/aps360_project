@@ -1,27 +1,37 @@
-from src.data.data_class import DataClass, ProteinGraphData
-from src.data.feature_utils import *
-from src.data.data_utils import *
+from sys import platform
+
+from data.data_class import DataClass, ProteinGraphData
+from data.feature_utils import *
+from data.data_utils import *
 import pandas as pd
 import numpy as np
 import torch.nn as nn 
 import torch
+import platform
 
-PROCESSED_DATA_DIR = "/Users/arthurzhou/github/aps360_project/src/data/processed"
+if platform.system() != "Windows":
+    PROCESSED_DATA_DIR = "/Users/arthurzhou/github/aps360_project/src/data/processed"
+else:
+    PROCESSED_DATA_DIR = 'C:\\Users\\Arthur Zhou\\GitHub\\aps360_project\\src\\data\\processed'
+
 
 class Tem1BetaLactamaseDataset(DataClass):
     """
     Dataset class for TEM-1 beta-lactamase data.
     """
-    def __init__(self, dms_data: pd.DataFrame, pdb_id:str, directed = True, max_neighbours=None):
+    def __init__(self, dms_data: pd.DataFrame, pdb_id:str, experiment_wt_sequence: str, directed = True, max_neighbours=None):
+
+        # use the WT sequence from PDB entry to build our node features. For aa mismatches, we will use the PDB WT.
+        wt_sequence, self.atomic_pos = parse_structure(load_cif_structure(f"{PROCESSED_DATA_DIR}/{pdb_id}.cif", pdb_id))
+        wt_sequence, valid_residue_mask= align_sequence(wt_sequence, experiment_wt_sequence, pdb_id) 
+        valid_residue_indices = np.where(valid_residue_mask == True)[0] + dms_data['Ambler Position'].min()-1 # Adjust indices to match DMS data
+        self.dms = dms_data.loc[dms_data['Ambler Position'].isin(valid_residue_indices)]  # filter DMS data to only include valid residues
+
+        print(self.dms['Code'].to_numpy())
+        self.wt_sequence_encoded = np.array([RESIDUE_LETTERS.index(i) for i in wt_sequence])
 
         # you should have the saved double single splits before here.
-        self.dms= dms_data
         self.aa_index = pd.read_csv(f"{PROCESSED_DATA_DIR}/aa_index_data.csv")
-        self.wt_sequence, self.atomic_pos = parse_structure(load_cif_structure(f"{PROCESSED_DATA_DIR}/{pdb_id}.cif", pdb_id))
-
-        self.wt_sequence_encoded = np.array([RESIDUE_LETTERS.index(i) for i in self.wt_sequence])
-        #compute reference variables 
-        
         # for reference
         self.aaindex_id = self.aa_index['id'].to_numpy(copy=True)
         self.aaindex_aa_arr = self.aa_index.columns[1:].to_numpy(copy=True)
@@ -35,14 +45,14 @@ class Tem1BetaLactamaseDataset(DataClass):
     
 
     def __len__(self):
-        return len(self.dms_data)
+        return len(self.dms)
 
     def __getitem__(self, idx):
         """ 
         Returns a single mutated sequence's features.
         """
         # build the full mutant sequence for node features + aaindex properties
-        code = self.dms.iloc[idx]['Code'].copy()
+        code = self.dms.iloc[idx]['Code']
         mutation_position = [int(i) for i in code.split("_") if i.isdigit()]
         fitness_label = self.labels[idx]
 

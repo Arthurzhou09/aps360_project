@@ -83,8 +83,9 @@ class DecoderLayer(MessagePassing):
         message_passing_layers: number of layers in the message passing MLP
         head_layers: number of layers in the regression MLP head
     """
-    def __inint__(self, in_dim: int, hidden_units: int, reg_hidden_units: int, message_passing_layers=3, head_layers=2):
+    def __init__(self, in_dim: int, hidden_units: int, reg_hidden_units: int, message_passing_layers=3, head_layers=2):
         super().__init__(aggr="mean")
+
         self.in_dim = in_dim
         self.hidden_units = hidden_units
         self.reg_hidden_units = reg_hidden_units

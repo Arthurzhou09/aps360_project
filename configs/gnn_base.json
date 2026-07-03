@@ -12,19 +12,21 @@
 
   "train": {
     "lr": 0.001,
-    "batch_size": 32,
-    "epochs": 50,
+    "epochs": 1,
     "weight_decay": 0.00001
   },
 
   "data": {
     "neighbours": 20,
     "shuffle": true,
-    "num_workers": 4
+    "num_workers": 4,
+    "train_size":0.8,
+    "val_size":0.1,
+    "batch_size": 32
   },
 
   "logging": {
-    "save_dir": "./runs",
+    "output_dir": "logs",
     "log_every": 10
   }
 }

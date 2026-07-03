@@ -3,7 +3,6 @@ from aaindex import aaindex1
 import Bio.PDB as PDB
 from Bio.PDB.Polypeptide import PPBuilder, is_aa
 import numpy as np
-from sklearn.model_selection import GroupShuffleSplit
 
 def load_data(file: str, type: str ='single') -> pd.DataFrame:
     """
@@ -165,9 +164,6 @@ def parse_structure(structure: PDB.Structure.Structure,)-> tuple[str, np.ndarray
 
     return sequence, atomic_pos,
 
-
-
-    
 
 """def expand_double_mutants(data: pd.DataFrame) -> pd.DataFrame:
     #Expand each double-mutant row into two single-mutation-style rows.

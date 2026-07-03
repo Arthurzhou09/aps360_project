@@ -11,7 +11,7 @@ from typing import Optional, Sequence
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
-from src.data.data_class import ProteinGraphData, DataClass, RESIDUE_LETTERS
+from data.data_class import ProteinGraphData, DataClass, RESIDUE_LETTERS
 import pandas as pd
 
 
@@ -124,48 +124,49 @@ def encode_sequence_features(code: str, sequence: np.ndarray[int]) -> tuple[np.n
 	One-hot encode a protein sequence.
 	args:
 		code: WT_ambler_Mut or WT1_WT2_ambler_Mut1_Mut2
-		sequence: list of residue indices
+		sequence: list of residue indices referencing RESIDUE_LETTERS. WT sequence.
 	returns:
 		seq: mutated sequence
 		mut_indices: indices of mutated residues
 
 	"""
-	split = code.split("_")  # Extract the amino acid sequence from the 
-	seq = sequence.copy() # list[int]
-	
+	# perform a basic alignment
 
-	assert seq[int(split[1]) - 1] == RESIDUE_LETTERS.index(split[0]), "WT amino acid does not match sequence at position"
+	split = code.split("_") 
+	seq = sequence.copy() 
+
 	
-	if split[1].isnumeric(): # 
+	
+	if split[1].isnumeric():
+		assert seq[int(split[1])] == RESIDUE_LETTERS.index(split[0]), "WT amino acid does not match sequence at position: {} vs {} at idx {} AA {}".format(seq[int(split[1])], RESIDUE_LETTERS.index(split[0]), int(split[1]), split[0])
 		mutation_indices = [int(split[1])]
-		seq[int(split[1]) - 1] = RESIDUE_LETTERS.index(split[2])  # Update the sequence with the mutation
+		seq[mutation_indices[0]] = RESIDUE_LETTERS.index(split[2])  # Update the sequence with the mutation
 	else:
 		muts = [split[3], split[4]]
 		mutation_indices = [int(split[2]), int(split[2]) +1]
 		wts = [split[0], split[1]]
 		for wt, pos, mut in zip(wts, mutation_indices, muts):
-			assert seq[pos - 1] == RESIDUE_LETTERS.index(wt), "WT amino acid does not match sequence at position"
-			seq[pos - 1] = RESIDUE_LETTERS.index(mut)  # Update the sequence with the mutation
+			assert seq[pos] == RESIDUE_LETTERS.index(wt), "WT amino acid does not match sequence at position: {} vs {} at idx {} AA {}".format(seq[pos], RESIDUE_LETTERS.index(wt), pos, wt)
+			seq[pos] = RESIDUE_LETTERS.index(mut)  # Update the sequence with the mutation
 	
 	return np.array(seq), np.array(mutation_indices)
 
 
-def encode_aaindex_features(aaindex_df: pd.DataFrame, sequence: np.ndarray[int]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def encode_aaindex_features(aaindex_df: pd.DataFrame, sequence: np.ndarray[int]) -> tuple[np.ndarray, np.ndarray]:
 	"""
 	build node features for each residue in the sequence.
 	args:
 		aa_index_df: DataFrame mapping aaindex IDs to lists of property values.
 		sequence: resiudes encoded as integers
 	returns:
-		propeties: (N ,F), node indices are mapped to residue order
-		aaindex_ids: list of aaindex record ids corresponding to the properties
+		aa_to_value: dict mapping amino acid index to property values
+		id_array: list of aaindex record ids corresponding to the properties
 	"""
 
-	aa_order = aaindex_df.columns[1:].tolist()
-	property_arr = aaindex_df.to_numpy()[:,1:]
-	id_array = property_arr[:, 0]
+	aa_to_value = {aa: aaindex_df[aa].to_numpy() for aa in RESIDUE_LETTERS}
+	id_array = aaindex_df['id'].to_numpy()
 
-	return property_arr, id_array, aa_order
+	return aa_to_value, id_array
 
 
 def build_node_features(code, sequence, aaindex_df):
@@ -179,10 +180,35 @@ def build_node_features(code, sequence, aaindex_df):
 		node_features: (N, F) array of node features for each residue
 	"""
 	encoded_sequence, _ = encode_sequence_features(code, sequence)
-	aaindex_features, _,_ = encode_aaindex_features(aaindex_df, encoded_sequence)
-	node_features = np.concatenate([encoded_sequence[:,None], aaindex_features], axis=1) # (N, F)
+	aa_to_value, _ = encode_aaindex_features(aaindex_df, encoded_sequence)
+
+	node_features = np.concatenate([encoded_sequence[:,None], np.array([aa_to_value[aa] for aa in sequence])], axis=1) # (N, F)
 
 	return node_features
+
+
+
+def align_sequence(wt_sequence: str, experiment_sequence: str, pdb_id,) -> str:
+	"""
+	Aligns the wild-type sequence with the experimental sequence.
+	args:
+		wt_sequence: wild-type amino acid sequence from PDB entry
+		experiment_sequence: experimental amino acid sequence from DMS data
+	returns:
+		aligned_wt_seq: aligned wild-type sequence as a numpy array of indices
+	"""
+
+	if pdb_id == "1BTL":
+		valid_residue_mask = np.zeros(len(wt_sequence), dtype=bool)
+		valid_residue_mask[23:-1] = True  # Mark valid residues (excluding stop codon and activation region)
+		# For 1BTL, the wild-type sequence starts at index 23 (0-based) and ends before the last residue
+		aligned_wt_seq = wt_sequence
+		aligned_experimental_seq = experiment_sequence[23:-1]
+	
+	if len(aligned_wt_seq) != len(aligned_experimental_seq):
+		raise ValueError("Wild-type length {} vs experiment length {} do not match after alignment for pdb_id {}".format(len(aligned_wt_seq), len(aligned_experimental_seq), pdb_id))
+
+	return aligned_wt_seq, valid_residue_mask
 
 
 

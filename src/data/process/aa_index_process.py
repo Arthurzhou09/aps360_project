@@ -1,4 +1,3 @@
-import sys
 from data.data_utils import load_aa_index
 import argparse
 from glob import glob
@@ -14,7 +13,7 @@ if __name__ == "__main__":
     aa_values ={}
     all_files = glob(args.input_dir + "/*.ttl")
     for file in all_files:
-        Id = file.split("/")[-1].split(".")[0]
+        Id = file.split(os.path.sep)[-1].split(".")[0]
         data, values = load_aa_index(Id)
         aa_values[Id] = (values, data['description'])
 
