@@ -1,0 +1,30 @@
+{
+  "seed": 1012,
+
+  "model": {
+    "in_channels": 128,
+    "hidden_channels": 64,
+    "reg_hidden_channels": 32,
+    "mp_layers": 3,
+    "head_layers": 2,
+    "dropout": 0.1
+  },
+
+  "train": {
+    "lr": 0.001,
+    "batch_size": 32,
+    "epochs": 50,
+    "weight_decay": 0.00001
+  },
+
+  "data": {
+    "neighbours": 20,
+    "shuffle": true,
+    "num_workers": 4
+  },
+
+  "logging": {
+    "save_dir": "./runs",
+    "log_every": 10
+  }
+}
