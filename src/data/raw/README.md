@@ -18,7 +18,7 @@ Amino acid difference formula to help explain protein evolution. May affect solv
 Affects hydrolysis. 
 
 ### CHOP780202 ($/beta sheet propensity)
-Norrmalized frequency of beta-sheet. Tem-beta has aalpha beta scaffold.
+Normalized frequency of beta-sheet. Tem-beta has aalpha beta scaffold.
 
 ### CHOP780201 (alpha-helix propensity)
-Normalized frequency of alpha-helix. Tem-beta has aalpha beta scaffold.
+Normalized frequency of alpha-helix. Tem-beta has alpha beta scaffold.

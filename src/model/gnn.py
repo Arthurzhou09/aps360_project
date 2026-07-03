@@ -1,20 +1,18 @@
+import torch.nn as nn
+import torch
+from model.blocks import EncoderLayer, DecoderLayer
 
-
-
-
-class Tem1BetaGCN(nn.Module):
+class Tem1BetaGNN(nn.Module):
     """
-    A simple GCN model for TEM-1 beta-lactamase fitness prediction.
+    A simple GCN model with a single variate regression head for TEM-1 beta-lactamase fitness prediction.
     """
-    def __init__(self, in_channels, hidden_channels, out_channels):
+    def __init__(self, in_channels, hidden_channels, reg_hidden_channels, mp_layers, head_layers):
         super().__init__()
-        self.conv1 = nn.Linear(in_channels, hidden_channels)
-        self.conv2 = nn.Linear(hidden_channels, out_channels)
-        self.relu = nn.ReLU()
+        self.encoder = EncoderLayer(in_channels, hidden_channels, mp_layers)
+        self.decoder = DecoderLayer(in_channels, hidden_channels, reg_hidden_channels, mp_layers, head_layers)
 
-    def forward(self, x, edge_index):
+    def forward(self, x, edge_index, edge_attr):
         # Simple GCN layer implementation
-        x = self.conv1(x)
-        x = self.relu(x)
-        x = self.conv2(x)
+        x = self.encoder(x, edge_index, edge_attr)
+        x = self.decoder(x, edge_index, edge_attr)
         return x

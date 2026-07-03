@@ -6,19 +6,20 @@ import numpy as np
 import torch.nn as nn 
 import torch
 
+PROCESSED_DATA_DIR = "/Users/arthurzhou/github/aps360_project/src/data/processed"
 
 class Tem1BetaLactamaseDataset(DataClass):
     """
     Dataset class for TEM-1 beta-lactamase data.
     """
-    def __init__(self, processed_data_dir: str, pdb_id:str, directed = True, max_neighbours=None, transform=None):
+    def __init__(self, dms_data: pd.DataFrame, pdb_id:str, directed = True, max_neighbours=None):
 
         # you should have the saved double single splits before here.
-        self.dms= pd.read_csv(f"{processed_data_dir}/processed_dms.csv")
-        self.aa_index = pd.read_csv(f"{processed_data_dir}/aa_index_data.csv")
-        self.wt_sequence, self.atomic_pos = parse_structure(load_cif_structure(f"{processed_data_dir}/{pdb_id}.cif", pdb_id))
+        self.dms= dms_data
+        self.aa_index = pd.read_csv(f"{PROCESSED_DATA_DIR}/aa_index_data.csv")
+        self.wt_sequence, self.atomic_pos = parse_structure(load_cif_structure(f"{PROCESSED_DATA_DIR}/{pdb_id}.cif", pdb_id))
 
-        self.wt_sequence_encoded = np.array([RESIDUE_LETTER.index(i) for i in self.wt_sequence])
+        self.wt_sequence_encoded = np.array([RESIDUE_LETTERS.index(i) for i in self.wt_sequence])
         #compute reference variables 
         
         # for reference
@@ -32,10 +33,9 @@ class Tem1BetaLactamaseDataset(DataClass):
         self.distance_features = build_distance_features(self.atomic_pos, k=max_neighbours, directed=directed)
         self.edge_index = build_backbone_edge_index(self.atomic_pos, k=max_neighbours, directed=directed)
     
-        self.transform = transform
 
     def __len__(self):
-        return len(self.data)
+        return len(self.dms_data)
 
     def __getitem__(self, idx):
         """ 

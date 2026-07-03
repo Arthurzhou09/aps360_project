@@ -11,53 +11,9 @@ from typing import Optional, Sequence
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
-from src.data.data_class import ProteinGraphData, DataClass
+from src.data.data_class import ProteinGraphData, DataClass, RESIDUE_LETTERS
+import pandas as pd
 
-RESIDUE_LETTERS = [
-    "A",
-    "R",
-    "N",
-    "D",
-    "C",
-    "Q",
-    "E",
-    "G",
-    "H",
-    "I",
-    "L",
-    "K",
-    "M",
-    "F",
-    "P",
-    "S",
-    "T",
-    "W",
-    "Y",
-    "V",
-]
-
-LETTER_TO_TOKEN = {
-    "A": "ALA",
-    "R": "ARG",
-    "N": "ASN",
-    "D": "ASP",
-    "C": "CYS",
-    "E": "GLU",
-    "Q": "GLN",
-    "G": "GLY",
-    "H": "HIS",
-    "I": "ILE",
-    "L": "LEU",
-    "K": "LYS",
-    "M": "MET",
-    "F": "PHE",
-    "P": "PRO",
-    "S": "SER",
-    "T": "THR",
-    "W": "TRP",
-    "Y": "TYR",
-    "V": "VAL",
-}
 
 # euclidean distance matrix (N,N,3)
 def _euclidean_distance_matrix(coords: np.ndarray) -> np.ndarray:
@@ -194,7 +150,6 @@ def encode_sequence_features(code: str, sequence: np.ndarray[int]) -> tuple[np.n
 	return np.array(seq), np.array(mutation_indices)
 
 
-import pandas as pd
 def encode_aaindex_features(aaindex_df: pd.DataFrame, sequence: np.ndarray[int]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 	"""
 	build node features for each residue in the sequence.

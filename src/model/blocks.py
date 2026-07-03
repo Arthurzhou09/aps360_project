@@ -41,7 +41,7 @@ class EncoderLayer(MessagePassing):
 
         self.norm = nn.LayerNorm(self.hidden_units)
 
-    def forward(self, x, edge_index, edge_attr):
+    def forward(self, x, edge_index: torch.long, edge_attr):
         """
         args:
             x: node features, shape [N, F]
@@ -58,7 +58,7 @@ class EncoderLayer(MessagePassing):
         x =self.norm(x + self.fcl_middle(x))
 
         # update edge features
-        edge_attr_propogate = self.edge_updater(edge_attr, x=x, edge_attr=edge_attr) # same but for edge features. aggregation brings (E,hidden_units) -> (N,hidden_units)
+        edge_attr_propogate = self.edge_updater(edge_index, x=x, edge_attr=edge_attr) # same but for edge features. aggregation brings (E,hidden_units) -> (N,hidden_units)
         edge_attr = self.norm(edge_attr + edge_attr_propogate) # a
 
         return x, edge_attr
@@ -72,25 +72,24 @@ class EncoderLayer(MessagePassing):
         message = self.fcl_message(torch.cat([x_j, edge_attr], dim=-1))
         return message
 
-class ClassifierDecoder(MessagePassing):
+class DecoderLayer(MessagePassing):
     """
-    Message passing with a simple mlp classifier head for decoding fitness.
+    Message passing with an mlp regression head for decoding fitness.
 
     args:
         in_dim: dimension of input node features
-        hidden_units: dimension of hidden units in message passing and classifier
+        hidden_units: dimension of hidden units in message passing 
+        reg_hidden_units: dimension of hidden units in regression MLP
         message_passing_layers: number of layers in the message passing MLP
-        classifier_layers: number of layers in the classifier MLP
-        message_passing_layers: number of layers in the message passing MLP
-        classifier_layers: number of layers in the classifier MLP
+        head_layers: number of layers in the regression MLP head
     """
-    def __inint__(self, in_dim: int, hidden_units: int, classifier_hidden_units: int, message_passing_layers=3, classifier_layers=2):
+    def __inint__(self, in_dim: int, hidden_units: int, reg_hidden_units: int, message_passing_layers=3, head_layers=2):
         super().__init__(aggr="mean")
         self.in_dim = in_dim
         self.hidden_units = hidden_units
-        self.classifier_hidden_units = classifier_hidden_units
+        self.reg_hidden_units = reg_hidden_units
         self.message_passing_layers = message_passing_layers
-        self.classifier_layers = classifier_layers
+        self.head_layers = head_layers
 
         message_fcl = []
         cur_in_dim = in_dim
@@ -101,10 +100,10 @@ class ClassifierDecoder(MessagePassing):
         self.fcl_message = nn.Sequential(*message_fcl)
 
         output =[]
-        for _ in range(self.classifier_layers):
-            output.append(nn.Linear(self.hidden_units, self.classifier_hidden_units))
+        for _ in range(self.head_layers):
+            output.append(nn.Linear(self.hidden_units, self.reg_hidden_units))
             output.append(nn.SiLU())
-            cur_in_dim = self.classifier_hidden_units
+            cur_in_dim = self.reg_hidden_units
 
         output.append(nn.Linear(cur_in_dim, 1))
         self.output = nn.Sequential(*output)

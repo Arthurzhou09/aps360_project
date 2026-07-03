@@ -3,6 +3,7 @@ from aaindex import aaindex1
 import Bio.PDB as PDB
 from Bio.PDB.Polypeptide import PPBuilder, is_aa
 import numpy as np
+from sklearn.model_selection import GroupShuffleSplit
 
 def load_data(file: str, type: str ='single') -> pd.DataFrame:
     """
@@ -17,18 +18,22 @@ def load_data(file: str, type: str ='single') -> pd.DataFrame:
     try:
         if type == 'single':
             sheet_name = 'S2 Missense mutation fitnesses'
+            subset = ['Ambler Position', 'Fitness',]
         else:
             sheet_name = 'S2. Fitness & Epistasis Values'
+            subset = ['Ambler Position', 'Double Mutant Fitness']
         data = pd.read_excel(file, sheet_name=sheet_name)
-    except:
+    except Exception as e:
+        print(f"Error occurred while loading data from {file}: {e} trying to pd.read_csv instead")
         data = pd.read_csv(file)
+        subset = None
     prior_size = data.shape[0]
     
     if 'Ambler Position' not in data.columns:
         print(f"'Ambler Position' not found returning data as is")
         return data
 
-    data.dropna(subset=['Ambler Position'], inplace=True)
+    data.dropna(subset=subset, inplace=True)
     print(f"Data loaded. Prior size: {prior_size}, After dropna: {data.shape[0]}")
     return data
 
@@ -129,7 +134,7 @@ def load_cif_structure(file_path:str, Id:str) -> PDB.Structure.Structure:
 
 
 
-def parse_structure(structure: PDB.Structure.Structure,):
+def parse_structure(structure: PDB.Structure.Structure,)-> tuple[str, np.ndarray]:
     """
     Parse a PDB structure to extract sequence, and atomic corodinates for CA, N, C, O atoms.
     args:
@@ -155,13 +160,14 @@ def parse_structure(structure: PDB.Structure.Structure,):
 
     atomic_pos = np.stack([ca_atoms_pos, n_atoms_pos, c_atoms_pos, o_atoms_pos], axis=1)
 
-
     # sequence from the modeled chain
     sequence = ''.join(str(peptide.get_sequence()) for peptide in PPBuilder().build_peptides(chain))
 
     return sequence, atomic_pos,
 
 
+
+    
 
 """def expand_double_mutants(data: pd.DataFrame) -> pd.DataFrame:
     #Expand each double-mutant row into two single-mutation-style rows.
