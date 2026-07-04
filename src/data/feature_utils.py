@@ -49,9 +49,8 @@ def _k_nearest_residues(distance_matrix: np.ndarray, k: int) -> np.ndarray:
 
 def build_backbone_edge_index(positions: np.ndarray, k: int = 20,directed:bool = True) -> np.ndarray:
 	"""
-	Call build distance features prefered, will return edge indices for knn backbone connectivity for a protein chain.
+	Call build distance features prefered, will return edge indices for knn spatial graph for a protein chain.
 
-	Create knn backbone connectivity for a protein chain.
 	args:
 		positions: (N, 4, 3) array of atomic coordinates
 		k: number of nearest neighbors to return
@@ -71,7 +70,7 @@ def build_backbone_edge_index(positions: np.ndarray, k: int = 20,directed:bool =
 			np.concatenate([source, target]),
 			np.concatenate([target, source]),
 		])
-		edge_index = np.unique(edge_index, axis=1)
+		edge_index = np.unique(np.sort(edge_index, axis=0), axis=1)
 	else:
 		edge_index = np.vstack([source, target])
 
@@ -93,7 +92,7 @@ def build_rbf(pos_1: np.ndarray, pos_2: np.ndarray, edge_indices: np.ndarray,
 
 	sigma = (distance_max - distance_min) / rbf_count
 	centers = np.linspace(distance_min, distance_max, rbf_count)
-	rbf = np.exp(-((euclidean_coord_vector[:, None] - centers[None, :] / sigma ** 2)))#(edge_count, rbf_count)
+	rbf = np.exp(-((euclidean_coord_vector[:, None] - centers[None, :])**2 / sigma ** 2))#(edge_count, rbf_count)
 	return rbf
 
 
@@ -115,8 +114,8 @@ def build_distance_features(positions: np.ndarray, k: int = 20, directed: bool =
 			feat = build_rbf(positions[:, atom_i], positions[:, atom_j], edge_index,)
 			
 			rbf_features.append(feat)
-	#(16, edge_count, rbf_count)
-	return np.stack(rbf_features, axis=-1)
+	#( edge_count, 16*rbf_count)
+	return np.concatenate(rbf_features, axis=-1)
 
 
 def encode_sequence_features(code: str, sequence: np.ndarray[int]) -> tuple[np.ndarray, np.ndarray]:
@@ -136,9 +135,8 @@ def encode_sequence_features(code: str, sequence: np.ndarray[int]) -> tuple[np.n
 	seq = sequence.copy() 
 
 	
-	
 	if split[1].isnumeric():
-		assert seq[int(split[1])] == RESIDUE_LETTERS.index(split[0]), "WT amino acid does not match sequence at position: {} vs {} at idx {} AA {}".format(seq[int(split[1])], RESIDUE_LETTERS.index(split[0]), int(split[1]), split[0])
+		assert seq[int(split[1])] == RESIDUE_LETTERS.index(split[0]), "WT amino acid does not match sequence at position: {} vs {} at idx {} | code: {}, AA {}".format(seq[int(split[1])], RESIDUE_LETTERS.index(split[0]), int(split[1]), split, RESIDUE_LETTERS[seq[int(split[1])]])
 		mutation_indices = [int(split[1])]
 		seq[mutation_indices[0]] = RESIDUE_LETTERS.index(split[2])  # Update the sequence with the mutation
 	else:
@@ -146,7 +144,7 @@ def encode_sequence_features(code: str, sequence: np.ndarray[int]) -> tuple[np.n
 		mutation_indices = [int(split[2]), int(split[2]) +1]
 		wts = [split[0], split[1]]
 		for wt, pos, mut in zip(wts, mutation_indices, muts):
-			assert seq[pos] == RESIDUE_LETTERS.index(wt), "WT amino acid does not match sequence at position: {} vs {} at idx {} AA {}".format(seq[pos], RESIDUE_LETTERS.index(wt), pos, wt)
+			assert seq[pos] == RESIDUE_LETTERS.index(wt), "WT amino acid does not match sequence at position: {} vs {} at idx {} | code: {}, AA {}".format(seq[pos], RESIDUE_LETTERS.index(wt), pos, split, RESIDUE_LETTERS[seq[pos]])
 			seq[pos] = RESIDUE_LETTERS.index(mut)  # Update the sequence with the mutation
 	
 	return np.array(seq), np.array(mutation_indices)
@@ -169,7 +167,7 @@ def encode_aaindex_features(aaindex_df: pd.DataFrame, sequence: np.ndarray[int])
 	return aa_to_value, id_array
 
 
-def build_node_features(code, sequence, aaindex_df):
+def build_node_features(code:str, sequence: np.ndarray[int], aaindex_df: pd.DataFrame):
 	"""
 	Build node features.
 	args:
@@ -182,13 +180,13 @@ def build_node_features(code, sequence, aaindex_df):
 	encoded_sequence, _ = encode_sequence_features(code, sequence)
 	aa_to_value, _ = encode_aaindex_features(aaindex_df, encoded_sequence)
 
-	node_features = np.concatenate([encoded_sequence[:,None], np.array([aa_to_value[aa] for aa in sequence])], axis=1) # (N, F)
+	node_features = np.concatenate([encoded_sequence[:,None], np.array([aa_to_value[RESIDUE_LETTERS[aa_idx]] for aa_idx in sequence])], axis=1) # (N, F)
 
 	return node_features
 
 
 
-def align_sequence(wt_sequence: str, experiment_sequence: str, pdb_id,) -> str:
+def align_sequence(wt_sequence: str, experiment_sequence: str, pdb_id: str) -> tuple[str, str, np.ndarray]:
 	"""
 	Aligns the wild-type sequence with the experimental sequence.
 	args:
@@ -196,6 +194,8 @@ def align_sequence(wt_sequence: str, experiment_sequence: str, pdb_id,) -> str:
 		experiment_sequence: experimental amino acid sequence from DMS data
 	returns:
 		aligned_wt_seq: aligned wild-type sequence as a numpy array of indices
+		aligned_experimental_seq: aligned experimental sequence as a numpy array of indices
+		valid_residue_mask: boolean mask indicating valid residues
 	"""
 
 	if pdb_id == "1BTL":
@@ -208,7 +208,7 @@ def align_sequence(wt_sequence: str, experiment_sequence: str, pdb_id,) -> str:
 	if len(aligned_wt_seq) != len(aligned_experimental_seq):
 		raise ValueError("Wild-type length {} vs experiment length {} do not match after alignment for pdb_id {}".format(len(aligned_wt_seq), len(aligned_experimental_seq), pdb_id))
 
-	return aligned_wt_seq, valid_residue_mask
+	return aligned_wt_seq, aligned_experimental_seq, valid_residue_mask
 
 
 

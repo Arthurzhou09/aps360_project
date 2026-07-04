@@ -10,7 +10,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_dir', type=str, required=True, help='Path to the directory containing the .xlsx files containing the DMS data')
     parser.add_argument('--output_dir', type=str, default='/Users/arthurzhou/github/aps360_project/src/data/processed', help='Path to save the processed data as CSV files')
-    parser.add_argument('--error_threshold', type=float, default=0.0, help='Error threshold for filtering double mutant entries based on single mutant fitness values. 0 meaans only single')
+    parser.add_argument('--error_threshold', type=float, default=100.0, help='Error threshold for filtering double mutant entries based on single mutant fitness values. Large values will keep more entries')
     parser.add_argument('--process_pair', action='store_true', help='Flag to indicate whether to process pair data. If not set, only single mutant data will be processed.')
     args = parser.parse_args()
 
@@ -22,10 +22,10 @@ if __name__ == "__main__":
     single_df['Ambler Position'] = single_df['Ambler Position'].astype(int) - single_df['Ambler Position'].min()
     double_df['Ambler Position'] = double_df['Ambler Position'].astype(int) - double_df['Ambler Position'].min()
 
-    # remove entires that are too erroneous between single and pair measurements.
-    """_,_, error_inter_single, error_inter_pair = compare_single_fitness(single_df, double_df, args.error_threshold)
-    double_df = double_df[~double_df.index.isin(error_inter_pair)]
-    single_df = single_df[~single_df.index.isin(error_inter_single)]"""
+    # remove entires that are too erroneous between single and pair measurements.TODO: decide how to formulate this approach if we want
+    #_, stats, error_inter_single, error_inter_pair = compare_single_fitness(single_df, double_df, args.error_threshold)
+    #double_df = double_df[~double_df.index.isin(error_inter_pair)]
+    #single_df = single_df[~single_df.index.isin(error_inter_single)]
 
     # parse the data
     single_df['Code'] = single_df['WT AA'] + "_" + single_df['Ambler Position'].astype(int).astype(str) + "_" + single_df['Mutant AA']

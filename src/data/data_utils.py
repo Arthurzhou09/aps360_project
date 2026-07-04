@@ -17,10 +17,10 @@ def load_data(file: str, type: str ='single') -> pd.DataFrame:
     try:
         if type == 'single':
             sheet_name = 'S2 Missense mutation fitnesses'
-            subset = ['Ambler Position', 'Fitness',]
+            subset = ['Ambler Position', 'Fitness', 'Estimated error in fitness']
         else:
             sheet_name = 'S2. Fitness & Epistasis Values'
-            subset = ['Ambler Position', 'Double Mutant Fitness']
+            subset = ['Ambler Position', 'Double Mutant Fitness', 'Double Mutant Fitness Error']
         data = pd.read_excel(file, sheet_name=sheet_name)
     except Exception as e:
         print(f"Error occurred while loading data from {file}: {e} trying to pd.read_csv instead")
@@ -49,7 +49,7 @@ def load_aa_index(Id: str):
     values = data.values
     return data, values
 
-def compare_single_fitness(single_df: pd.DataFrame, double_df: pd.DataFrame, err_dev: float = 1.0) -> tuple[pd.DataFrame, dict, list[int], list[int]]:
+def compare_single_fitness(single_df: pd.DataFrame, double_df: pd.DataFrame, err_dev: float) -> tuple[pd.DataFrame, dict, list[int], list[int]]:
     """
     Compare single-mutant fitness values against double-mutant data.
     Supports:
@@ -112,7 +112,10 @@ def compare_single_fitness(single_df: pd.DataFrame, double_df: pd.DataFrame, err
              'double_in_single': merged_df['double_in_single'].sum(), 'double_in_single_ratio': merged_df['double_in_single'].sum() / len(merged_df), 
              'error_intersection': merged_df['error_intersection'].sum(), 'error_intersection_ratio': merged_df['error_intersection'].sum() / len(merged_df)}
     
-    # indices to drop from original dms sets/dfs
+    # indices to drop from original dms sets
+    double_df['code_1'] = double_code_1
+    double_df['code_2'] = double_code_2
+
     drop_indices_single = merged_df.loc[~merged_df['error_intersection'], 'Single Index'].drop_duplicates().tolist()
     drop_indices_double = merged_df.loc[~merged_df['error_intersection'], 'Source Index'].drop_duplicates().tolist()
 
