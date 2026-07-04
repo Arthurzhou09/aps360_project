@@ -2,7 +2,8 @@
   "seed": 1012,
 
   "model": {
-    "in_channels": 128,
+    "node_in_channels": 3, 
+    "edge_features_dim": 128,
     "hidden_channels": 64,
     "reg_hidden_channels": 32,
     "mp_layers": 3,
@@ -17,7 +18,7 @@
   },
 
   "data": {
-    "neighbours": 20,
+    "neighbours":16,
     "shuffle": true,
     "num_workers": 4,
     "train_size":0.8,

@@ -18,9 +18,10 @@ if __name__ == "__main__":
     single_df = load_data(args.input_dir + "/dms_single.xlsx", type='single')
     double_df = load_data(args.input_dir + '/dms_pair.xlsx', type='pair')
 
-    # normalize ambler positions
-    single_df['Ambler Position'] = single_df['Ambler Position'].astype(int) - single_df['Ambler Position'].min()
-    double_df['Ambler Position'] = double_df['Ambler Position'].astype(int) - double_df['Ambler Position'].min()
+    # assign ambler position groups: data has some missing ambler positions
+    single_df['Ambler Index'] = single_df['Ambler Position'].ne(single_df['Ambler Position'].shift()).cumsum() - 1
+    double_df['Ambler Index'] = double_df['Ambler Position'].ne(double_df['Ambler Position'].shift()).cumsum() - 1
+
 
     # remove entires that are too erroneous between single and pair measurements.TODO: decide how to formulate this approach if we want
     #_, stats, error_inter_single, error_inter_pair = compare_single_fitness(single_df, double_df, args.error_threshold)
@@ -30,7 +31,7 @@ if __name__ == "__main__":
     # parse the data
     single_df['Code'] = single_df['WT AA'] + "_" + single_df['Ambler Position'].astype(int).astype(str) + "_" + single_df['Mutant AA']
     single_df['Single'] = 1
-    processed_single_data = single_df[['Single', 'Ambler Position', 'Code', 
+    processed_single_data = single_df[['Single', 'Ambler Index', 'Code', 
                                        'Fitness', 'Estimated error in fitness']].copy()
     processed_single_data['Epistasis'] = -111
     processed_single_data['Experiment Sequence'] = "".join(single_df.drop_duplicates(subset=['Ambler Position', 'WT AA'], ignore_index=True)['WT AA'].to_numpy())
@@ -39,12 +40,12 @@ if __name__ == "__main__":
     if args.process_pair:
         double_df['Code'] = double_df['WT AA 1'] + "_" + double_df['WT AA 2'] + "_" + double_df['Ambler Position'].astype(int).astype(str) + "_" + double_df['Mut AA 1'] + "_" + double_df['Mut AA 2']
         double_df['Single'] = 0
-        processed_pair_data = double_df[['Single', 'Ambler Position', 'Code', 
+        processed_pair_data = double_df[['Single', 'Ambler Index', 'Code', 
                                     'Double Mutant Fitness', 'Double Mutant Fitness Error',
                                     'Epistasis']].rename(columns={
                                         'Double Mutant Fitness': 'Fitness',
                                         'Double Mutant Fitness Error': 'Estimated error in fitness'}).reset_index(drop=True)
-        
+        processed_pair_data['Experiment Sequence'] = "".join(double_df.drop_duplicates(subset=['Ambler Position', 'WT AA 1'], ignore_index=True)['WT AA 1'].to_numpy())
         processed_data = pd.concat([processed_single_data, processed_pair_data], ignore_index=True)
     else:
         processed_data = processed_single_data

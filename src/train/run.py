@@ -54,8 +54,8 @@ def train(model, num_epochs, train_loader, val_loader, optimizer, criterion, dev
         for b_i, batch in enumerate(train_loader):
             optimizer.zero_grad()
             batch = batch.to(device)
-            output = model(batch)
-            loss = criterion(output, batch.fitness)
+            output = model(batch.node_features, batch.edge_index, batch.distance_features, batch.batch)
+            loss = criterion(output.squeeze(-1), batch.fitness)
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
@@ -71,8 +71,8 @@ def train(model, num_epochs, train_loader, val_loader, optimizer, criterion, dev
         with torch.no_grad():
             for batch in val_loader:
                 batch = batch.to(device)
-                pred = model(batch)
-                loss = criterion(pred, batch.fitness)
+                pred = model(batch.node_features, batch.edge_index, batch.distance_features, batch.batch)
+                loss = criterion(pred.squeeze(-1), batch.fitness)
                 val_loss += loss.item()
                 val_samples += batch.num_graphs
         val_loss /= val_samples
@@ -94,6 +94,7 @@ def train(model, num_epochs, train_loader, val_loader, optimizer, criterion, dev
 
 if __name__ == "__main__":
 
+    # input channels is the number of edge attribute features (rbf number(8) * 16 = 128)  +node features (aa index properties + mutated encoded sequence)
     parser = argparse.ArgumentParser()
     parser.add_argument("--processed_dms", type=str, required=True, help="Path to the dms directory.")
     parser.add_argument("--config", type=str, required=True, help="Path to the training configuration JSON file.")
@@ -106,18 +107,18 @@ if __name__ == "__main__":
 
     ### Data Loading ###
     dms = pd.read_csv(args.processed_dms + "/dms_processed.csv")
-    ex_seq =dms['Experiment Sequence'].iloc[0]
 
     train_df, val_df, test_df = split_by_position(dms, train_frac=cfg.data.train_size, val_frac=cfg.data.val_size)
 
-    dataset_train = Tem1BetaLactamaseDataset(dms_data=train_df, pdb_id=args.pdb_id, experiment_wt_sequence =ex_seq, directed=args.directed, max_neighbours=cfg.data.neighbours)
+    dataset_train = Tem1BetaLactamaseDataset(dms_data=train_df, pdb_id=args.pdb_id, directed=args.directed, max_neighbours=cfg.data.neighbours)
     train_loader = DataLoader(dataset_train, batch_size=cfg.data.batch_size, shuffle=cfg.data.shuffle, num_workers=cfg.data.num_workers)
     
-    dataset_val= Tem1BetaLactamaseDataset(dms_data=val_df, pdb_id=args.pdb_id, experiment_wt_sequence =ex_seq, directed=args.directed, max_neighbours=cfg.data.neighbours)
+    dataset_val= Tem1BetaLactamaseDataset(dms_data=val_df, pdb_id=args.pdb_id, directed=args.directed, max_neighbours=cfg.data.neighbours)
     val_loader = DataLoader(dataset_val, batch_size=cfg.data.batch_size, shuffle=False, num_workers=cfg.data.num_workers)  
 
     model_gnn = Tem1BetaGNN(
-        in_channels=cfg.model.in_channels,
+        node_in_channels=cfg.model.node_in_channels,
+        edge_features_dim=cfg.model.edge_features_dim,
         hidden_channels=cfg.model.hidden_channels,
         reg_hidden_channels=cfg.model.reg_hidden_channels,
         mp_layers=cfg.model.mp_layers,
@@ -125,6 +126,8 @@ if __name__ == "__main__":
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    os.makedirs(cfg.logging.output_dir, exist_ok=True)
+    
     train(model=model_gnn, 
           num_epochs=cfg.train.epochs, 
           train_loader=train_loader,
