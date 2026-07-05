@@ -8,6 +8,14 @@ class Tem1BetaGNN(nn.Module):
     """
     def __init__(self, node_in_channels, edge_features_dim, hidden_channels, reg_hidden_channels, mp_layers, head_layers):
         super().__init__()
+
+        self.node_in_channels = node_in_channels
+        self.edge_features_dim = edge_features_dim
+        self.hidden_channels = hidden_channels
+        self.reg_hidden_channels = reg_hidden_channels
+        self.mp_layers = mp_layers
+        self.head_layers = head_layers
+        
         self.encoder = EncoderLayer(node_in_channels, edge_features_dim, hidden_channels, mp_layers)
         self.decoder = DecoderLayer(hidden_channels, reg_hidden_channels, mp_layers, head_layers)
 

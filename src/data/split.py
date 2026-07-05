@@ -18,7 +18,7 @@ def split_by_position(
     train_frac=0.8,
     val_frac=0.1,
     seed=1012,
-):
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
     Split the dms data by mutation position. All mutations in the same residue position will be
     in the same split. TODO: Adress double mutants robustly.
@@ -28,7 +28,7 @@ def split_by_position(
     """
     df = df.copy()
 
-    df["positions"] = df["Code"].apply(get_positions)
+    df["positions"] = df["Ambler Index"]
 
     # unique residue positions as a set
     all_positions = sorted(

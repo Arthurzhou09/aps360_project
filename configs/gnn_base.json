@@ -27,7 +27,7 @@
   },
 
   "logging": {
-    "output_dir": "logs",
+    "output_dir": "./src/train/gnn/output",
     "log_every": 10
   }
 }
