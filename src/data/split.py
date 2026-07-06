@@ -7,7 +7,7 @@ import re
 
 def get_positions(code):
     """
-    Extract mutatation residue positions from mutation code
+    Extract mutatation residue positions from Sequence Index (Ambler Index).
     returns:
         list of residue positions (Ambler)
     """
@@ -28,7 +28,7 @@ def split_by_position(
     """
     df = df.copy()
 
-    df["positions"] = df["Ambler Index"]
+    df["positions"] = df.apply(lambda x: [x['Ambler Index']] if x['Single'] ==1 else [x['Ambler Index'], x['Ambler Index'] + 1], axis=1)
 
     # unique residue positions as a set
     all_positions = sorted(

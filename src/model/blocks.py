@@ -2,6 +2,7 @@ import torch.nn as nn
 from torch_geometric.nn import MessagePassing
 import torch
 from torch_geometric.nn import global_mean_pool
+from torch_geometric.utils import softmax
 
 class EncoderLayer(MessagePassing):
     """
@@ -115,7 +116,7 @@ class DecoderLayer(MessagePassing):
         self.norm = nn.LayerNorm(self.hidden_units)
 
         # pooling
-        self.gate = nn.Linear(hidden_units, hidden_units)
+        self.gate = nn.Linear(hidden_units, hidden_units) #feature
         self.score = nn.Linear(hidden_units, 1)
 
         
@@ -126,7 +127,7 @@ class DecoderLayer(MessagePassing):
         # attention pool
         gate = torch.sigmoid(self.gate(x))
         scores = self.score(x)
-        weights = torch.softmax(scores, dim=0)
+        weights = softmax(scores, batch)
         x = weights*gate*x
         x = global_mean_pool(x, batch) # (B, hidden_units)
   

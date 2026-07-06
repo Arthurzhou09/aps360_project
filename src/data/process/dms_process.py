@@ -50,6 +50,6 @@ if __name__ == "__main__":
     else:
         processed_data = processed_single_data
 
-    os.makedirs(os.path.join(args.output_dir, f"err_{args.error_threshold}"), exist_ok=True)
-    processed_data.to_csv(os.path.join(args.output_dir, f"err_{args.error_threshold}", f"dms_processed.csv"), index=False)
+    os.makedirs(args.output_dir, exist_ok=True)
+    processed_data.to_csv(os.path.join(args.output_dir, f"dms_processed.csv"), index=False)
     print(f"Processed data saved to {args.output_dir}")

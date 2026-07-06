@@ -119,6 +119,7 @@ def align_sequence(seq1, seq2) -> dict[int, int]:
 		seq2: reference sequence (pdb wt)
 	returns:
 		mapping: maapping[i] gives the residue index in seq2 for residue i in seq1. 
+		alignment: the alignment object from Biopython PairwiseAligner
 	"""
 	aligner = PairwiseAligner()
 	aligner.mode = "global"
@@ -134,7 +135,7 @@ def align_sequence(seq1, seq2) -> dict[int, int]:
 		for i1, i2 in zip(range(s1_start, s1_end), range(s2_start, s2_end)):
 			mapping[i1] = i2
 
-	return mapping
+	return mapping, alignment
 
 
 

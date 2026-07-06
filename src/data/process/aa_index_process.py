@@ -6,7 +6,7 @@ import pandas as pd
 
 if __name__ == "__main__":
     parser =argparse.ArgumentParser()
-    parser.add_argument('--input_dir', type=str, required=False, help='Path to the directory containing the .ttl files with record ids')
+    parser.add_argument('--input_dir', type=str, required=True, help='Path to the directory containing the .ttl files with record ids')
     parser.add_argument('--output_dir', type=str, default='/Users/arthurzhou/github/aps360_project/src/data/process/', help='Path to save the processed data as a CSV file')
     args = parser.parse_args()
 

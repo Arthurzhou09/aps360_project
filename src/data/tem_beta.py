@@ -34,25 +34,38 @@ class Tem1BetaLactamaseDataset(DataClass):
         self.aa_index = pd.read_csv(f"{PROCESSED_DATA_DIR}/aa_index_data.csv")
 
         # align the experimental sequence with pdb wt. (single and pair)
-        single_sequence = dms_data.loc[dms_data['Single'] == 1]['Experiment Sequence'].iloc[0]
-        pair_sequence = dms_data.loc[dms_data['Single'] == 0]['Experiment Sequence'].iloc[0]
+        if (dms_data['Single'] == 1).any():
+            single_sequence = dms_data.loc[dms_data['Single'] == 1]['Experiment Sequence'].iloc[0]
+        else:
+            single_sequence = None
+
+        if (dms_data['Single'] == 0).any():
+            pair_sequence = dms_data.loc[dms_data['Single'] == 0]['Experiment Sequence'].iloc[0]
+        else:
+            pair_sequence = None
 
         self.alignment_mappings = {
-            1: align_sequence(single_sequence, self.wt_sequence),
-            0: align_sequence(pair_sequence, self.wt_sequence),
+            1: align_sequence(single_sequence, self.wt_sequence)[0] if single_sequence is not None else {},
+            0: align_sequence(pair_sequence, self.wt_sequence)[0] if pair_sequence is not None else {} ,
         }
 
-         # encode the sequence with respect to PDB WT.
-        single_wt_experimental_encoded_sequence = np.zeros(len(self.wt_sequence), dtype=int)
-        for dms_idx, wt_idx in self.alignment_mappings[1].items():
-            aa = single_sequence[dms_idx]
-            single_wt_experimental_encoded_sequence[wt_idx] = RESIDUE_LETTERS.index(aa)
-        
-        pair_wt_experimental_encoded_sequence = np.zeros(len(self.wt_sequence), dtype=int)
-        for dms_idx, wt_idx in self.alignment_mappings[0].items():
-            aa = pair_sequence[dms_idx]
-            pair_wt_experimental_encoded_sequence[wt_idx] = RESIDUE_LETTERS.index(aa)
-        
+        if single_sequence is not None:
+            # encode the sequence with respect to PDB WT.
+            single_wt_experimental_encoded_sequence = np.zeros(len(self.wt_sequence), dtype=int)
+            for dms_idx, wt_idx in self.alignment_mappings[1].items():
+                aa = single_sequence[dms_idx]
+                single_wt_experimental_encoded_sequence[wt_idx] = RESIDUE_LETTERS.index(aa)
+        else:
+            single_wt_experimental_encoded_sequence = None
+
+        if pair_sequence is not None:
+            pair_wt_experimental_encoded_sequence = np.zeros(len(self.wt_sequence), dtype=int)
+            for dms_idx, wt_idx in self.alignment_mappings[0].items():
+                aa = pair_sequence[dms_idx]
+                pair_wt_experimental_encoded_sequence[wt_idx] = RESIDUE_LETTERS.index(aa)
+        else:
+            pair_wt_experimental_encoded_sequence = None
+
         self.wt_experimental_encoded_sequences = {
             1: single_wt_experimental_encoded_sequence, 
             0: pair_wt_experimental_encoded_sequence,
@@ -131,25 +144,37 @@ class MLPDataset(DataClass):
         self.aa_index = pd.read_csv(f"{PROCESSED_DATA_DIR}/aa_index_data.csv")
 
         # align the experimental sequence with pdb wt. (single and pair)
-        single_sequence = dms_data.loc[dms_data['Single'] == 1]['Experiment Sequence'].iloc[0]
-        pair_sequence = dms_data.loc[dms_data['Single'] == 0]['Experiment Sequence'].iloc[0]
+        if (dms_data['Single'] == 1).any():
+            single_sequence = dms_data.loc[dms_data['Single'] == 1]['Experiment Sequence'].iloc[0]
+        else:
+            single_sequence = None
+        if (dms_data['Single'] == 0).any():
+            pair_sequence = dms_data.loc[dms_data['Single'] == 0]['Experiment Sequence'].iloc[0]
+        else:
+            pair_sequence = None    
 
         self.alignment_mappings = {
-            1: align_sequence(single_sequence, self.wt_sequence),
-            0: align_sequence(pair_sequence, self.wt_sequence),
+            1: align_sequence(single_sequence, self.wt_sequence)[0] if single_sequence is not None else {},
+            0: align_sequence(pair_sequence, self.wt_sequence)[0] if pair_sequence is not None else {},
         }
 
          # encode the sequence with respect to PDB WT.
-        single_wt_experimental_encoded_sequence = np.zeros(len(self.wt_sequence), dtype=int)
-        for dms_idx, wt_idx in self.alignment_mappings[1].items():
-            aa = single_sequence[dms_idx]
-            single_wt_experimental_encoded_sequence[wt_idx] = RESIDUE_LETTERS.index(aa)
-        
-        pair_wt_experimental_encoded_sequence = np.zeros(len(self.wt_sequence), dtype=int)
-        for dms_idx, wt_idx in self.alignment_mappings[0].items():
-            aa = pair_sequence[dms_idx]
-            pair_wt_experimental_encoded_sequence[wt_idx] = RESIDUE_LETTERS.index(aa)
-        
+        if single_sequence is not None:
+            single_wt_experimental_encoded_sequence = np.zeros(len(self.wt_sequence), dtype=int)
+            for dms_idx, wt_idx in self.alignment_mappings[1].items():
+                aa = single_sequence[dms_idx]
+                single_wt_experimental_encoded_sequence[wt_idx] = RESIDUE_LETTERS.index(aa)
+        else:
+            single_wt_experimental_encoded_sequence = None
+
+        if pair_sequence is not None:
+            pair_wt_experimental_encoded_sequence = np.zeros(len(self.wt_sequence), dtype=int)
+            for dms_idx, wt_idx in self.alignment_mappings[0].items():
+                aa = pair_sequence[dms_idx]
+                pair_wt_experimental_encoded_sequence[wt_idx] = RESIDUE_LETTERS.index(aa)
+        else:
+            pair_wt_experimental_encoded_sequence = None
+
         self.wt_experimental_encoded_sequences = {
             1: single_wt_experimental_encoded_sequence, 
             0: pair_wt_experimental_encoded_sequence,

@@ -168,36 +168,23 @@ def parse_structure(structure: PDB.Structure.Structure,)-> tuple[str, np.ndarray
     return sequence, atomic_pos,
 
 
-"""def expand_double_mutants(data: pd.DataFrame) -> pd.DataFrame:
-    #Expand each double-mutant row into two single-mutation-style rows.
-    first_mutant = data.assign(
-        Code=data['WT AA 1'] + data['Ambler Position'].astype(int).astype(str) + data['Mut AA 1'],
-        Mutant_Number=1,
-        Fitness=data['Mut 1 Fitness'],
-        Fitness_Error=data['Mut 1 Fitness Error'],
-        Partner_Fitness=data['Mut 2 Fitness'],
-        Partner_Fitness_Error=data['Mut 2 Fitness Error'],
-    )
 
-    second_mutant = data.assign(
-        Code=data['WT AA 2'] + data['Ambler Position'].astype(int).astype(str) + data['Mut AA 2'],
-        Mutant_Number=2,
-        Fitness=data['Mut 2 Fitness'],
-        Fitness_Error=data['Mut 2 Fitness Error'],
-        Partner_Fitness=data['Mut 1 Fitness'],
-        Partner_Fitness_Error=data['Mut 1 Fitness Error'],
-    )
+def min_max_normalize(train_set: pd.DataFrame, val_set: pd.DataFrame, test_set: pd.DataFrame,):
+    """
+    Min-max normalize the input array to the range [0, 1].
+    args:
+        arr: input array
+    returns:
+        normalized_arr: min-max normalized array
+    """
 
-    columns = [
-        'Code',
-        'Mutant_Number',
-        'Fitness',
-        'Fitness_Error',
-        'Partner_Fitness',
-        'Partner_Fitness_Error',
-        'Double Mutant Fitness',
-        'Double Mutant Fitness Error',
-        'Epistasis',
-    ]
+    train_min = train_set['Fitness'].min()
+    train_max = train_set['Fitness'].max()
 
-    return pd.concat([first_mutant[columns], second_mutant[columns]], ignore_index=True)"""
+    x_train = (train_set['Fitness'] - train_min) / (train_max - train_min)
+    x_val = (val_set['Fitness'] - train_min) / (train_max - train_min) if val_set is not None else None
+    x_test = (test_set['Fitness'] - train_min) / (train_max - train_min) if test_set is not None else None
+
+    return x_train, x_val, x_test
+
+    
