@@ -168,23 +168,4 @@ def parse_structure(structure: PDB.Structure.Structure,)-> tuple[str, np.ndarray
     return sequence, atomic_pos,
 
 
-
-def min_max_normalize(train_set: pd.DataFrame, val_set: pd.DataFrame, test_set: pd.DataFrame,):
-    """
-    Min-max normalize the input array to the range [0, 1].
-    args:
-        arr: input array
-    returns:
-        normalized_arr: min-max normalized array
-    """
-
-    train_min = train_set['Fitness'].min()
-    train_max = train_set['Fitness'].max()
-
-    x_train = (train_set['Fitness'] - train_min) / (train_max - train_min)
-    x_val = (val_set['Fitness'] - train_min) / (train_max - train_min) if val_set is not None else None
-    x_test = (test_set['Fitness'] - train_min) / (train_max - train_min) if test_set is not None else None
-
-    return x_train, x_val, x_test
-
     
