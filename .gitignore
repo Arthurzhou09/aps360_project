@@ -16,3 +16,6 @@ coverage.xml
 src/data/raw/dms
 src/data/raw/aa_index
 src/data/process/*.csv
+
+*.
+*.npy
