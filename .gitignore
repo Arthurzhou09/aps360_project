@@ -19,3 +19,4 @@ src/data/process/*.csv
 
 *.
 *.npy
+*.png
