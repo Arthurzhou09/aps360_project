@@ -51,7 +51,7 @@ class Tem1BetaLactamaseDataset(DataClass):
 
         if single_sequence is not None:
             # encode the sequence with respect to PDB WT.
-            single_wt_experimental_encoded_sequence = np.zeros(len(self.wt_sequence), dtype=int)
+            single_wt_experimental_encoded_sequence = np.full(len(self.wt_sequence),fill_value=-1, dtype=int)
             for dms_idx, wt_idx in self.alignment_mappings[1].items():
                 aa = single_sequence[dms_idx]
                 single_wt_experimental_encoded_sequence[wt_idx] = RESIDUE_LETTERS.index(aa)
@@ -59,7 +59,7 @@ class Tem1BetaLactamaseDataset(DataClass):
             single_wt_experimental_encoded_sequence = None
 
         if pair_sequence is not None:
-            pair_wt_experimental_encoded_sequence = np.zeros(len(self.wt_sequence), dtype=int)
+            pair_wt_experimental_encoded_sequence = np.full(len(self.wt_sequence),fill_value=-1, dtype=int)
             for dms_idx, wt_idx in self.alignment_mappings[0].items():
                 aa = pair_sequence[dms_idx]
                 pair_wt_experimental_encoded_sequence[wt_idx] = RESIDUE_LETTERS.index(aa)
@@ -111,16 +111,18 @@ class Tem1BetaLactamaseDataset(DataClass):
             if (sample['Ambler Index'] + 1) in alignment_mapping:
                 node_idx_2 = alignment_mapping[sample['Ambler Index'] + 1]
                 mutation_encoded_sequence[node_idx_2] = RESIDUE_LETTERS.index(code[4])
+                mutation_idx[node_idx_2] = True
 
         #build node features
-        aaindex_node_features = build_node_features(mutation_encoded_sequence, self.aa_index)
-    
+        aaindex_node_features = build_node_features(mutation_encoded_sequence, self.aa_index) #263, 28
+        aaindex_node_features = np.concatenate([mutation_idx[:,None], aaindex_node_features], axis= 1)
+
         protein_graph = ProteinGraphData(
             distance_features=torch.tensor(self.distance_features, dtype=torch.float),
             node_features=torch.tensor(aaindex_node_features, dtype=torch.float),
             sequence=torch.tensor(self.wt_sequence_encoded, dtype=torch.long), # not used  in model
             edge_index=torch.tensor(self.edge_index, dtype=torch.long),
-            mutation_idx=torch.tensor(mutation_idx, dtype=torch.bool), # not used rn in model
+            mutation_idx=torch.tensor(mutation_idx, dtype=torch.bool), # used by decoder to pool mutated residues
             fitness =torch.tensor(fitness_label, dtype=torch.float),
         )
 
@@ -160,7 +162,7 @@ class MLPDataset(DataClass):
 
          # encode the sequence with respect to PDB WT.
         if single_sequence is not None:
-            single_wt_experimental_encoded_sequence = np.zeros(len(self.wt_sequence), dtype=int)
+            single_wt_experimental_encoded_sequence = np.full(len(self.wt_sequence), fill_value=-1, dtype=int)
             for dms_idx, wt_idx in self.alignment_mappings[1].items():
                 aa = single_sequence[dms_idx]
                 single_wt_experimental_encoded_sequence[wt_idx] = RESIDUE_LETTERS.index(aa)
@@ -168,7 +170,7 @@ class MLPDataset(DataClass):
             single_wt_experimental_encoded_sequence = None
 
         if pair_sequence is not None:
-            pair_wt_experimental_encoded_sequence = np.zeros(len(self.wt_sequence), dtype=int)
+            pair_wt_experimental_encoded_sequence = np.full(len(self.wt_sequence), fill_value=-1, dtype=int)
             for dms_idx, wt_idx in self.alignment_mappings[0].items():
                 aa = pair_sequence[dms_idx]
                 pair_wt_experimental_encoded_sequence[wt_idx] = RESIDUE_LETTERS.index(aa)
@@ -194,36 +196,36 @@ class MLPDataset(DataClass):
     
 
     def __getitem__(self, idx):
-        """ 
-        Returns a single sample.
+        """
+        Returns a single sample. Features are built from the mutated site(s)
+        (WT properties, mutant properties, and their delta)
         """
         sample = self.dms.iloc[idx]
         alignment_mapping = self.alignment_mappings[sample['Single']]
         node_idx = alignment_mapping[sample['Ambler Index']]
 
-        # get one hot mutation index
-        mutation_idx = np.zeros(len(self.wt_sequence), dtype=bool)
-        mutation_idx[node_idx] = True
-
         # encode the sequence with respect to PDB WT.
         wt_experimental_encoded_sequence = self.wt_experimental_encoded_sequences[sample['Single']]
 
-        # build the node sequence with the mutation in
         code = sample['Code'].split("_")
-        if code[1].isnumeric(): # single mutation
-            mutation_encoded_sequence = wt_experimental_encoded_sequence.copy()
-            mutation_encoded_sequence[node_idx] = RESIDUE_LETTERS.index(code[2])
-        else: # pair mutation
-            mutation_encoded_sequence = wt_experimental_encoded_sequence.copy()
-            mutation_encoded_sequence[node_idx] = RESIDUE_LETTERS.index(code[3])
-            if (sample['Ambler Index'] + 1) in alignment_mapping:
-                node_idx_2 = alignment_mapping[sample['Ambler Index'] + 1]
-                mutation_encoded_sequence[node_idx_2] = RESIDUE_LETTERS.index(code[4])
+        is_pair = not code[1].isnumeric()
 
-        #build node features
-        aaindex_features = build_node_features(mutation_encoded_sequence, self.aa_index)
+        wt_aa_1 = wt_experimental_encoded_sequence[node_idx]
+        mut_aa_1 = RESIDUE_LETTERS.index(code[3] if is_pair else code[2])
+        site_1_features = build_mutation_features(wt_aa_1, mut_aa_1, self.aa_index)
 
-        aaindex_features = torch.tensor(aaindex_features.flatten(), dtype=torch.float)
+        # site 2 only exists for pair mutations with a valid adjacent alignment
+        site_2_features = np.zeros_like(site_1_features)
+        has_site_2 = False
+        if is_pair and (sample['Ambler Index'] + 1) in alignment_mapping:
+            node_idx_2 = alignment_mapping[sample['Ambler Index'] + 1]
+            wt_aa_2 = wt_experimental_encoded_sequence[node_idx_2]
+            mut_aa_2 = RESIDUE_LETTERS.index(code[4])
+            site_2_features = build_mutation_features(wt_aa_2, mut_aa_2, self.aa_index)
+            has_site_2 = True
+
+        aaindex_features = np.concatenate([site_1_features, site_2_features, [float(has_site_2)]])
+        aaindex_features = torch.tensor(aaindex_features, dtype=torch.float)
         fitness_label = torch.tensor(self.labels[idx], dtype=torch.float)
 
         return aaindex_features, fitness_label

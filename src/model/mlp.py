@@ -14,13 +14,10 @@ class MLP(nn.Module):
 
         self.fcl = nn.Sequential(
             nn.Linear(input_dim, bottleneck_hidden_dim*2),
-            nn.LayerNorm(bottleneck_hidden_dim*2),
             nn.SiLU(),
             nn.Linear(bottleneck_hidden_dim*2, bottleneck_hidden_dim),
-            nn.LayerNorm(bottleneck_hidden_dim),
             nn.SiLU(),
             nn.Linear(bottleneck_hidden_dim, bottleneck_hidden_dim),
-            nn.LayerNorm(bottleneck_hidden_dim),
             nn.SiLU(),
             nn.Linear(bottleneck_hidden_dim, 1)
         )

@@ -2,23 +2,23 @@
   "seed": 1012,
 
   "model": {
-    "node_in_channels": 3, 
+    "node_in_channels": 29,
     "edge_features_dim": 128,
     "hidden_channels": 64,
     "reg_hidden_channels": 32,
     "mp_layers": 3,
     "head_layers": 2,
-    "dropout": 0.1
+    "dropout": 0.2
   },
 
   "train": {
-    "lr": 0.001,
-    "epochs": 1,
+    "lr": 0.00005,
+    "epochs": 100,
     "weight_decay": 0.00001
   },
 
   "data": {
-    "neighbours":16,
+    "neighbours": 20,
     "shuffle": true,
     "num_workers": 4,
     "train_size":0.8,

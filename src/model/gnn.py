@@ -6,7 +6,7 @@ class Tem1BetaGNN(nn.Module):
     """
     A simple GCN model with a single variate regression head for TEM-1 beta-lactamase fitness prediction.
     """
-    def __init__(self, node_in_channels, edge_features_dim, hidden_channels, reg_hidden_channels, mp_layers, head_layers):
+    def __init__(self, node_in_channels, edge_features_dim, hidden_channels, reg_hidden_channels, mp_layers, head_layers, dropout=0.0):
         super().__init__()
 
         self.node_in_channels = node_in_channels
@@ -15,12 +15,13 @@ class Tem1BetaGNN(nn.Module):
         self.reg_hidden_channels = reg_hidden_channels
         self.mp_layers = mp_layers
         self.head_layers = head_layers
-        
-        self.encoder = EncoderLayer(node_in_channels, edge_features_dim, hidden_channels, mp_layers)
-        self.decoder = DecoderLayer(hidden_channels, reg_hidden_channels, mp_layers, head_layers)
+        self.dropout = dropout
 
-    def forward(self, x, edge_index, edge_attr, batch):
+        self.encoder = EncoderLayer(node_in_channels, edge_features_dim, hidden_channels, mp_layers, dropout)
+        self.decoder = DecoderLayer(hidden_channels, reg_hidden_channels, mp_layers, head_layers, dropout)
+
+    def forward(self, x, edge_index, edge_attr, batch, mutation_idx):
         # Simple GCN layer implementation
         x, edge_attribute = self.encoder(x, edge_index, edge_attr)
-        x = self.decoder(x, edge_index, edge_attribute, batch)
+        x = self.decoder(x, edge_index, edge_attribute, batch, mutation_idx)
         return x

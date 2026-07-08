@@ -42,7 +42,7 @@ class EarlyStopping:
 
 def min_max_normalize(train_set: pd.DataFrame, val_set: pd.DataFrame|None, test_set: pd.DataFrame|None,)-> tuple[pd.DataFrame, pd.DataFrame|None, pd.DataFrame|None, list[float]]:
     """
-    Min-max normalize the input array to the range [0, 1].
+    Min-max normalize the input array fitness to the range [0, 1].
     args:
         arr: input array
     returns:

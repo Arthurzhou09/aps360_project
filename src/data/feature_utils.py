@@ -36,18 +36,19 @@ def _k_nearest_residues(distance_matrix: np.ndarray, k: int) -> np.ndarray:
     """
     d_ca = distance_matrix[0].copy()
     np.fill_diagonal(d_ca, np.inf)
+	# return the upper diagonal matrix all the time
     nearest_indices = np.argsort(d_ca, axis=1)[:,:k]
     return nearest_indices
 
 
-def build_backbone_edge_index(positions: np.ndarray, k: int = 20,directed:bool = True) -> np.ndarray:
+def build_backbone_edge_index(positions: np.ndarray, k: int = 20,directed:bool = False) -> np.ndarray:
 	"""
 	Call build distance features prefered, will return edge indices for knn spatial graph for a protein chain.
 
 	args:
 		positions: (N, 4, 3) array of atomic coordinates
 		k: number of nearest neighbors to return
-		directed: whether to create directed edges (i -> j) or undirected edges (i <-> j). 
+		directed: whether to create directed edges (i -> j) or undirected edges (i <->j). 
 	returns:
 		edge_index: array of shape (2, E) with source and target indices for each edge (upper bound of 2*E for undirected).
 	"""
@@ -63,10 +64,10 @@ def build_backbone_edge_index(positions: np.ndarray, k: int = 20,directed:bool =
 			np.concatenate([source, target]),
 			np.concatenate([target, source]),
 		])
-		edge_index = np.unique(np.sort(edge_index, axis=0), axis=1)
+		edge_index = np.hstack([np.vstack([source, target]), np.vstack([target, source])])
+		edge_index = np.unique(edge_index, axis=1)  #remove exact duplicates only.
 	else:
 		edge_index = np.vstack([source, target])
-
 	return edge_index
 
 def build_rbf(pos_1: np.ndarray, pos_2: np.ndarray, edge_indices: np.ndarray,
@@ -89,7 +90,7 @@ def build_rbf(pos_1: np.ndarray, pos_2: np.ndarray, edge_indices: np.ndarray,
 	return rbf
 
 
-def build_distance_features(positions: np.ndarray, k: int = 20, directed: bool = True) -> np.ndarray:
+def build_distance_features(positions: np.ndarray, k: int = 16, directed: bool = False) -> np.ndarray:
 	"""
 	Compute knn atomic distance features (edge attributes).
 	args:
@@ -111,7 +112,7 @@ def build_distance_features(positions: np.ndarray, k: int = 20, directed: bool =
 	return np.concatenate(rbf_features, axis=-1)
 
 
-def align_sequence(seq1, seq2) -> dict[int, int]:
+def align_sequence(seq1, seq2) ->tuple[dict[int, int], object]:
 	"""
 	Global alignment of two sequences. Point mutations are included in the mapping.
 	args:
@@ -139,38 +140,79 @@ def align_sequence(seq1, seq2) -> dict[int, int]:
 
 
 
-def encode_aaindex_features(aaindex_df: pd.DataFrame, sequence: np.ndarray[int]) -> tuple[np.ndarray, np.ndarray]:
+def encode_aaindex_features(aaindex_df: pd.DataFrame) -> tuple[dict, np.ndarray]:
 	"""
-	build node features for each residue in the sequence.
+	build node features for each residue in the sequence. Properties are standardized
+	across the 20 canonical AAs.
 	args:
 		aa_index_df: DataFrame mapping aaindex IDs to lists of property values.
 		sequence: resiudes encoded as integers
 	returns:
-		aa_to_value: dict mapping amino acid index to property values
+		aa_to_value: dict mapping amino acid index to standardized property values
 		id_array: list of aaindex record ids corresponding to the properties
 	"""
 
-	aa_to_value = {aa: aaindex_df[aa].to_numpy() for aa in RESIDUE_LETTERS}
+	values = aaindex_df[RESIDUE_LETTERS].to_numpy(dtype=float) # (num_properties, 20)
+	standardized = (values - values.mean(axis=1, keepdims=True)) / values.std(axis=1, keepdims=True)
+
+	aa_to_value = {aa: standardized[:, i] for i, aa in enumerate(RESIDUE_LETTERS)}
 	id_array = aaindex_df['id'].to_numpy()
 
 	return aa_to_value, id_array
 
 
+def _one_hot_aa(aa_idx: int) -> np.ndarray:
+	"""
+	One-hot encode an amino acid index (0-19), or all-zeros for -1/unknown.
+	returns:
+		one_hot: (20,) array of one-hot encoded amino acid identity
+	"""
+	one_hot = np.zeros(len(RESIDUE_LETTERS), dtype=float)
+	if aa_idx != -1:
+		one_hot[aa_idx] = 1.0
+	return one_hot
+
+
 def build_node_features( encoded_mutation_sequence: np.ndarray[int], aaindex_df: pd.DataFrame):
 	"""
-	Build node features.
+	Build node features
 	args:
-		encoded_mutation_sequence: array of the encoded mutation sequence
+		encoded_mutation_sequence:  encoded mutation sequence (0-19)
 		aaindex_df: DataFrame mapping aaindex IDs to lists of property values
 	returns:
-		node_features: (N, F) array of node features for each 	
+		node_features: (N, 20+ aa_prop_classes) array of node features for each residue
 	"""
-	aa_to_value, _ = encode_aaindex_features(aaindex_df, encoded_mutation_sequence)
+	aa_to_value, _ = encode_aaindex_features(aaindex_df)
 
-	node_features = np.concatenate([encoded_mutation_sequence[:,None], np.array([aa_to_value[RESIDUE_LETTERS[aa_idx]] for aa_idx in encoded_mutation_sequence])], axis=1) # (N, F)
+	zero_feat = np.zeros(len(next(iter(aa_to_value.values()))), dtype=float)
+	one_hot_features = np.array([_one_hot_aa(aa_idx) for aa_idx in encoded_mutation_sequence])
+	aa_features = np.array([
+		aa_to_value[RESIDUE_LETTERS[aa_idx]] if aa_idx != -1 else zero_feat
+		for aa_idx in encoded_mutation_sequence])
+
+	node_features = np.concatenate([one_hot_features, aa_features], axis=1) #[263, 20] cat [8] = 263 , 28
 
 	return node_features
 
 
+def build_mutation_features(wt_aa_idx: int, mut_aa_idx: int, aaindex_df: pd.DataFrame) -> np.ndarray:
+	"""
+	Build compact features describing mutations, instead of whole sequence for MLP.
+	Amino acid identity is one-hot encoded rather than a raw ordinal index, since
+	there is no meaningful ordering between amino acids.
+	args:
+		wt_aa_idx: encoded WT amino acid index (0-19)
+		mut_aa_idx: encoded mutant amino acid index (0-19)
+		aaindex_df: DataFrame mapping aaindex IDs to lists of property values
+	returns:
+		features: (2*20 + 3*P,) array: [wt_onehot, mut_onehot, wt_props, mut_props, delta_props]
+	"""
+	aa_to_value, _ = encode_aaindex_features(aaindex_df)
+
+	wt_props = aa_to_value[RESIDUE_LETTERS[wt_aa_idx]]
+	mut_props = aa_to_value[RESIDUE_LETTERS[mut_aa_idx]]
+	delta_props = mut_props - wt_props
+
+	return np.concatenate([_one_hot_aa(wt_aa_idx), _one_hot_aa(mut_aa_idx), wt_props, mut_props, delta_props])
 
 

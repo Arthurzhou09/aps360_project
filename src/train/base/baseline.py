@@ -15,14 +15,13 @@ from train.train_utils import EarlyStopping, min_max_normalize
 
 
 def train(model, num_epochs, train_loader, val_loader, optimizer, criterion, device, output_dir, early_stopping=None):
-    """ 
-    trainig loop. use "sum' on mse
+    """
+    trainig loop. use "mean" on mse
     """
     model.to(device)
     train_m = []
     val_m = []
     best_val_loss =None
-    
 
     for epoch in range(num_epochs):
         total_loss = 0.0
@@ -34,10 +33,10 @@ def train(model, num_epochs, train_loader, val_loader, optimizer, criterion, dev
             x = x.to(device)
             y = y.to(device)
             output = model(x)
-            loss = criterion(output.squeeze(-1), y)
+            loss = criterion(output.squeeze(-1), y) #check: ok to have mean or sum before back prop?
             loss.backward()
             optimizer.step()
-            total_loss += loss.item()
+            total_loss += loss.item() * y.size(0)
             total_samples += y.size(0)
         mean_loss = total_loss / total_samples
         train_m.append(mean_loss)
@@ -54,7 +53,7 @@ def train(model, num_epochs, train_loader, val_loader, optimizer, criterion, dev
                 y = y.to(device)
                 pred = model(x)
                 loss = criterion(pred.squeeze(-1), y)
-                val_loss += loss.item()
+                val_loss += loss.item() * y.size(0)
                 val_samples += y.size(0)
         val_loss /= val_samples
         val_m.append(val_loss)
@@ -101,7 +100,7 @@ if __name__ == "__main__":
     parser.add_argument("--use_early_stopping", action="store_true", help="Whether to use early stopping during training.")
 
     #model
-    parser.add_argument("--input_dim", type=int, default=2367, help="Number of input channels for node features.") #263* (number of aaindex_properties + 1  (mutation sequence))   
+    parser.add_argument("--input_dim", type=int, default=129, help="Number of input channels for node features.") # 2 mut sites * (2*20 one-hot wt/mut identity + 3*8 AAindex wt/mut/delta props) + has_site_2 flag
     parser.add_argument("--bottleneck_hidden_dim", type=int, default=64, help="number of final hidden channels")
     
     args = parser.parse_args()
@@ -110,7 +109,7 @@ if __name__ == "__main__":
     dms = pd.read_csv(args.processed_dms + "/dms_processed.csv")
 
     train_df, val_df, _ = split_by_position(dms, train_frac=args.train_size, val_frac=args.val_size, seed=args.seed)
-    train_df, val_df, _ = min_max_normalize(train_df, val_df, None)
+    train_df, val_df, _, _= min_max_normalize(train_df, val_df, None)
 
     dataset_train = MLPDataset(dms_data=train_df, pdb_id=args.pdb_id,)
     train_loader = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
@@ -132,8 +131,8 @@ if __name__ == "__main__":
           train_loader=train_loader,
             val_loader=val_loader, 
             optimizer=torch.optim.AdamW(model_mlp.parameters(), lr=args.lr, weight_decay=args.weight_decay),
-            criterion=torch.nn.MSELoss(reduction='sum'), 
+            criterion=torch.nn.MSELoss(reduction='mean'),
             device=device,
             output_dir=args.output_dir,
-            early_stopping=EarlyStopping(patience=10, delta=0.00001) if args.use_early_stopping else None
+            early_stopping=EarlyStopping(patience=10, delta=0.000001) if args.use_early_stopping else None
     )

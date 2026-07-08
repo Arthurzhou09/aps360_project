@@ -1,7 +1,7 @@
-import torch.nn as nn 
+import torch.nn as nn
 from torch_geometric.nn import MessagePassing
 import torch
-from torch_geometric.nn import global_mean_pool
+from torch_geometric.nn import global_add_pool
 from torch_geometric.utils import softmax
 
 class EncoderLayer(MessagePassing):
@@ -13,7 +13,7 @@ class EncoderLayer(MessagePassing):
         hidden_units: dimension of hidden units in message passing
         message_passing_layers: number of layers in the message passing MLP
     """
-    def __init__(self, node_in_dim: int, edge_features_dim: int,hidden_units: int, message_passing_layers=3 ):
+    def __init__(self, node_in_dim: int, edge_features_dim: int,hidden_units: int, message_passing_layers=3, dropout=0.0):
         super().__init__(aggr="mean")
 
         self.node_in_dim = node_in_dim
@@ -26,6 +26,7 @@ class EncoderLayer(MessagePassing):
         for _ in range(message_passing_layers):
             fcl_edge_message.append(nn.Linear(cur_in_dim, self.hidden_units))
             fcl_edge_message.append(nn.SiLU())
+            fcl_edge_message.append(nn.Dropout(dropout))
             cur_in_dim = self.hidden_units
         self.fcl_edge = nn.Sequential(*fcl_edge_message)
 
@@ -34,12 +35,14 @@ class EncoderLayer(MessagePassing):
         for _ in range(message_passing_layers):
             fcl_message.append(nn.Linear(cur_in_dim, self.hidden_units))
             fcl_message.append(nn.SiLU())
+            fcl_message.append(nn.Dropout(dropout))
             cur_in_dim = self.hidden_units
         self.fcl_message = nn.Sequential(*fcl_message)
 
         self.fcl_middle = nn.Sequential(
             nn.Linear(self.hidden_units, self.hidden_units*2),
             nn.SiLU(),
+            nn.Dropout(dropout),
             nn.Linear(self.hidden_units*2, self.hidden_units)
         )
 
@@ -88,19 +91,20 @@ class DecoderLayer(MessagePassing):
         message_passing_layers: number of layers in the message passing MLP
         head_layers: number of layers in the regression MLP head
     """
-    def __init__(self,  hidden_units: int, reg_hidden_units: int, message_passing_layers=3, head_layers=2):
+    def __init__(self,  hidden_units: int, reg_hidden_units: int, message_passing_layers=3, head_layers=2, dropout=0.0):
         super().__init__(aggr="mean")
 
         self.hidden_units = hidden_units
         self.reg_hidden_units = reg_hidden_units
         self.message_passing_layers = message_passing_layers
         self.head_layers = head_layers
-        
+
         message_fcl = []
         cur_in_dim = 2*self.hidden_units # add with edge projection features
         for _ in range(self.message_passing_layers):
             message_fcl.append(nn.Linear(cur_in_dim, self.hidden_units))
             message_fcl.append(nn.SiLU())
+            message_fcl.append(nn.Dropout(dropout))
             cur_in_dim = self.hidden_units
         self.fcl_message = nn.Sequential(*message_fcl)
 
@@ -109,6 +113,7 @@ class DecoderLayer(MessagePassing):
         for _ in range(self.head_layers):
             output.append(nn.Linear(cur_in_dim, self.reg_hidden_units)) # 164 - > 64, 32
             output.append(nn.SiLU())
+            output.append(nn.Dropout(dropout))
             cur_in_dim = self.reg_hidden_units
         output.append(nn.Linear(cur_in_dim, 1))
         self.output = nn.Sequential(*output)
@@ -120,17 +125,19 @@ class DecoderLayer(MessagePassing):
         self.score = nn.Linear(hidden_units, 1)
 
         
-    def forward(self,x, edge_index, edge_attr, batch):
-        x_propogate = self.propagate(edge_index, x=x, edge_attr=edge_attr) 
+    def forward(self, x, edge_index, edge_attr, batch, mutation_idx):
+        x_propogate = self.propagate(edge_index, x=x, edge_attr=edge_attr)
         x = self.norm(x + x_propogate)
 
-        # attention pool
-        gate = torch.sigmoid(self.gate(x))
+        gate = torch.sigmoid(self.gate(x)) 
+
+        # attention pool over the mutated residue(s) only: non-mutated nodes get -inf
         scores = self.score(x)
+        scores = scores.masked_fill(~mutation_idx.unsqueeze(-1), float('-inf'))
         weights = softmax(scores, batch)
         x = weights*gate*x
-        x = global_mean_pool(x, batch) # (B, hidden_units)
-  
+        x = global_add_pool(x, batch) # (B, hidden_units)
+
         x = self.output(x)
         return x
 
