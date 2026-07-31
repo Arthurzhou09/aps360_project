@@ -1,12 +1,10 @@
 from sys import platform
-
+import torch
 from data.data_class import DataClass, ProteinGraphData
 from data.feature_utils import *
 from data.data_utils import *
 import pandas as pd
 import numpy as np
-import torch.nn as nn 
-import torch
 import platform
 
 if platform.system() != "Windows":
@@ -189,8 +187,7 @@ class MLPDataset(DataClass):
 
         # static features and labels
         self.labels=self.dms['Fitness'].to_numpy(copy=True)
-
-
+    
     def __len__(self):
         return len(self.dms)
     
