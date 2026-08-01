@@ -100,3 +100,40 @@ class ProteinGraphData(Data):
             self.mutation_idx = mutation_idx
         if fitness is not None:
             self.fitness = fitness
+
+
+class HomologGraphData(Data):
+    def __init__(
+        self,
+        distance_features=None,
+        node_features=None,
+        sequence=None,
+        edge_index=None,
+        mask_idx=None,
+        labels=None,
+    ):
+        """
+        A class representing a self-supervised masked-residue training sample: a homolog
+        sequence threaded onto the WT structure graph with one residue masked out.
+
+        Args:
+            distance_features: distances between residues (pairwise distances between N, Ca, C, O),
+            node_features: additional numeric features for each residue, expected shape [N, F], where F is the number of features. Masked position(s) get zeroed identity/property features.
+            sequence: WT amino acid sequence of the protein (reference only, not used by the model), expected shape [N].
+            edge_index: Edge indices representing the connectivity of residues, expected shape [2, E]
+            mask_idx: Mask indicating the masked position(s) in the sequence, expected shape [N,]
+            labels: True amino acid index (0-19) at masked position(s), -100 (CrossEntropyLoss ignore_index) elsewhere, expected shape [N,]
+        """
+        super(HomologGraphData, self).__init__()
+        if distance_features is not None:
+            self.distance_features = distance_features
+        if node_features is not None:
+            self.node_features = node_features
+        if edge_index is not None:
+            self.edge_index = edge_index
+        if sequence is not None:
+            self.sequence = sequence
+        if mask_idx is not None:
+            self.mask_idx = mask_idx
+        if labels is not None:
+            self.labels = labels

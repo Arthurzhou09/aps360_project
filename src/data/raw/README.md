@@ -22,3 +22,16 @@ Normalized frequency of beta-sheet. Tem-beta has aalpha beta scaffold.
 
 ### CHOP780201 (alpha-helix propensity)
 Normalized frequency of alpha-helix. Tem-beta has alpha beta scaffold.
+
+
+
+### PF00144 (Beta-lactamase family, Pfam/InterPro)
+Used for self-supervised structure-conditioned pretraining: homolog sequences are threaded onto the TEM-1 (1BTL) structure graph and the GNN is trained to recover a masked residue's identity from its neighbours, with no fitness labels involved. TEM-1 belongs to this family (InterPro IPR001466). Family page: https://www.ebi.ac.uk/interpro/entry/pfam/PF00144/
+
+Downloads (via `homolog_process.py`):
+- Full alignment (61,457 sequences, Stockholm, gzipped) — save as `PF00144_full.sto.gz`:
+  https://www.ebi.ac.uk/interpro/api/entry/pfam/PF00144/?annotation=alignment:full
+- Seed alignment (127 curated sequences, much smaller, useful for a quick test run) — save as `PF00144_seed.sto.gz`:
+  https://www.ebi.ac.uk/interpro/api/entry/pfam/PF00144/?annotation=alignment:seed
+
+Fallback: UniRef90, ~30GB compressed, https://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref90/uniref90.fasta.: prob not doing this this is too much.

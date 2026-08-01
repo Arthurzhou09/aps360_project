@@ -2,7 +2,11 @@ import pandas as pd
 from aaindex import aaindex1
 import Bio.PDB as PDB
 from Bio.PDB.Polypeptide import PPBuilder, is_aa
+from Bio import AlignIO
 import numpy as np
+import gzip
+from data.data_class import RESIDUE_LETTERS
+from data.feature_utils import align_sequence
 
 def load_data(file: str, type: str ='single') -> pd.DataFrame:
     """
@@ -167,5 +171,61 @@ def parse_structure(structure: PDB.Structure.Structure,)-> tuple[str, np.ndarray
 
     return sequence, atomic_pos,
 
+### self supervised learnign stuff ###
+
+def load_alignment(file_path: str):
+    """
+    Loads a Pfam multiple sequence alignment (stockholm format).
+    args:
+        file_path: path to the .sto or .sto.gz alignment file
+    returns:
+        alignment: Bio.Align.MultipleSeqAlignment object
+    """
+    opener = gzip.open if file_path.endswith('.gz') else open
+    with opener(file_path, 'rt') as handle:
+        alignment = AlignIO.read(handle, 'stockholm')
+    return alignment
+
+
+def extract_family_sequences(alignment) -> dict:
+    """
+    Extract ungapped sequences from a Pfam alignment. Drop records that
+    contain non-canonical residues.
+    args:
+        alignment: Bio.Align.MultipleSeqAlignment object
+    returns:
+        sequences: dict mapping record id to ungapped sequence
+    """
+    sequences = {}
+    for record in alignment:
+        seq = str(record.seq).replace('-', '').replace('.', '').upper()
+        if seq and all(aa in RESIDUE_LETTERS for aa in seq):
+            sequences[record.id] = seq
+    return sequences
+
+
+def filter_homologs_by_identity(sequences: dict, wt_sequence: str, min_identity: float = 0.4, max_identity: float = 0.99) -> pd.DataFrame:
+    """
+    Aligns each homolog sequence to the WT (PDB) sequence and keep similar ones within a range
+    ST WT structure is a reasonable stand-in for their fold, but excluding near duplicates of WT itself.
+    args:
+        sequences: mapping record id to ungapped sequence 
+        wt_sequence: reference (PDB) WT sequence
+        min_identity: minimum fraction identity to WT to keep a homolog
+        max_identity: maximum fraction identity to WT to keep a homolog
+    returns:
+        homolog_df: DataFrame with columns ['homolog_ID', 'percent_identity', 'sequence']
+    """
+    records = []
+    for record_id, seq in sequences.items():
+        mapping, _ = align_sequence(seq, wt_sequence)
+        if not mapping:
+            continue
+        matches = sum(1 for i, j in mapping.items() if seq[i] == wt_sequence[j])
+        identity = matches / len(mapping)
+        if min_identity <= identity <= max_identity:
+            records.append({'homolog_ID': record_id, 'percent_identity': identity, 'sequence': seq})
+
+    return pd.DataFrame.from_records(records, columns=['homolog_ID', 'percent_identity', 'sequence'])
 
     
