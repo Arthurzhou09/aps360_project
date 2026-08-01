@@ -80,6 +80,8 @@ class EncoderLayer(MessagePassing):
         message = self.fcl_message(torch.cat([x_j, edge_attr], dim=-1))
         return message
 
+
+
 class DecoderLayer(MessagePassing):
     """
     Message passing with an mlp regression head for decoding fitness.
@@ -145,3 +147,56 @@ class DecoderLayer(MessagePassing):
         message = self.fcl_message(torch.cat([x_j, edge_attr], dim=-1))
         return message
 
+
+class MaskedResidueDecoderLayer(MessagePassing):
+    """
+    Message passing with a per-node classification head for masked-residue self-supervised
+    pretraining. Unlike DecoderLayer, there is no pooling since every node gets 20
+    amino acid logits, and the loss is computed only at masked positions via
+    nn.CrossEntropyLoss(ignore_index=-100) against the label tensor. All else is the same.
+
+    args:
+        hidden_units: dimension of hidden units in message passing
+        head_hidden_units: dimension of hidden units in the classification MLP
+        message_passing_layers: number of layers in the message passing MLP
+        head_layers: number of layers in the classification MLP head
+    """
+    def __init__(self, hidden_units: int, head_hidden_units: int, message_passing_layers=3, head_layers=2, dropout=0.0):
+        super().__init__(aggr="mean")
+
+        self.hidden_units = hidden_units
+        self.head_hidden_units = head_hidden_units
+        self.message_passing_layers = message_passing_layers
+        self.head_layers = head_layers
+
+        message_fcl = []
+        cur_in_dim = 2*self.hidden_units # add with edge projection features
+        for _ in range(self.message_passing_layers):
+            message_fcl.append(nn.Linear(cur_in_dim, self.hidden_units))
+            message_fcl.append(nn.SiLU())
+            message_fcl.append(nn.Dropout(dropout))
+            cur_in_dim = self.hidden_units
+        self.fcl_message = nn.Sequential(*message_fcl)
+
+        output = []
+        cur_in_dim = self.hidden_units
+        for _ in range(self.head_layers):
+            output.append(nn.Linear(cur_in_dim, self.head_hidden_units)) # 64 -> 32
+            output.append(nn.SiLU())
+            output.append(nn.Dropout(dropout))
+            cur_in_dim = self.head_hidden_units
+        output.append(nn.Linear(cur_in_dim, 20)) # 20 canonical amino  
+        self.output = nn.Sequential(*output)
+
+        self.norm = nn.LayerNorm(self.hidden_units)
+
+    def forward(self, x, edge_index, edge_attr):
+        x_propogate = self.propagate(edge_index, x=x, edge_attr=edge_attr)
+        x = self.norm(x + x_propogate)
+
+        logits = self.output(x) # [N, 20], logits not normalized
+        return logits
+
+    def message(self, x_j, edge_attr):
+        message = self.fcl_message(torch.cat([x_j, edge_attr], dim=-1))
+        return message

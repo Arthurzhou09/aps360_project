@@ -1,8 +1,33 @@
-
-
+import json
 import numpy as np
 import torch
 import pandas as pd
+
+
+class Config:
+    """
+    Configuration class with parameter as attributes. Instaniate with load_config
+    """
+    def __init__(self, d):
+        for k, v in d.items():
+            # recursive convert until root of dicionary.
+            if isinstance(v, dict):
+                v = Config(v)
+            setattr(self, k, v)
+
+def load_config(path: str) -> Config:
+    """
+    Load a JSON training configuration.
+    args:
+        path: Path to the JSON configuration file.
+    returns:
+        config: Config object with parameters as attributes.
+    """
+    with open(path, "r") as f:
+        data = json.load(f)
+    return Config(data)
+
+
 
 # taken from:" https://github.com/Bjarten/early-stopping-pytorch/blob/main/early_stopping_pytorch/early_stopping.py"
 class EarlyStopping:
