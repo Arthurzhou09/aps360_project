@@ -229,6 +229,38 @@ def filter_homologs_by_identity(sequences: dict, wt_sequence: str, min_identity:
     return pd.DataFrame.from_records(records, columns=['homolog_ID', 'percent_identity', 'sequence'])
 
 
+def real_mutation_mask(dms_data: pd.DataFrame, alignment_mappings: dict, wt_experimental_encoded_sequences: dict) -> np.ndarray:
+    """
+    Boolean mask, True for rows that actually change at least one residue.
+    "mutant" residue is the WT residue itself are not mutations, and they corrupt any log P(mutant) - log P(WT) score.
+    args:
+        dms_data: DataFrame in dms_processed.csv format
+        alignment_mappings, wt_experimental_encoded_sequences: from align_dms_experiment_sequences
+    returns:
+        mask: (len(dms_data),) bool array, aligned to dms_data's row order
+    """
+    keep = np.zeros(len(dms_data), dtype=bool)
+
+    for i, (_, sample) in enumerate(dms_data.iterrows()):
+        mapping = alignment_mappings[sample['Single']]
+        encoded = wt_experimental_encoded_sequences[sample['Single']]
+        ambler = sample['Ambler Index']
+        if encoded is None or ambler not in mapping:
+            continue # unaligned rows are dropped downstream anyway
+
+        code = sample['Code'].split("_")
+        is_pair = not code[1].isnumeric()
+
+        sites = [(mapping[ambler], code[3] if is_pair else code[2])]
+        if is_pair and (ambler + 1) in mapping:
+            sites.append((mapping[ambler + 1], code[4]))
+
+        # a pair with one self-site and one real substitution is still a real mutation
+        keep[i] = any(RESIDUE_LETTERS.index(mut_aa) != encoded[node_idx] for node_idx, mut_aa in sites)
+
+    return keep
+
+
 def align_dms_experiment_sequences(dms_data: pd.DataFrame, wt_sequence: str) -> tuple[dict, dict]:
     """
     Aligns each DMS experiment's sequence onto the WT structure, the same pattern used by the datasets. We should use this and replace stuff.
