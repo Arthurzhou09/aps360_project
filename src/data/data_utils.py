@@ -228,4 +228,35 @@ def filter_homologs_by_identity(sequences: dict, wt_sequence: str, min_identity:
 
     return pd.DataFrame.from_records(records, columns=['homolog_ID', 'percent_identity', 'sequence'])
 
-    
+
+def align_dms_experiment_sequences(dms_data: pd.DataFrame, wt_sequence: str) -> tuple[dict, dict]:
+    """
+    Aligns each DMS experiment's sequence onto the WT structure, the same pattern used by the datasets. We should use this and replace stuff.
+    args:
+        dms_data: DataFrame in dms_processed.csv format, with a 'Single' column and one
+            'Experiment Sequence' per Single value (0 or 1).
+        wt_sequence: reference (PDB) WT sequence
+    returns:
+        alignment_mappings: {1: single mapping, 0: pair mapping}, dms-sequence-index -> wt-index
+        wt_experimental_encoded_sequences: {1: single encoded array, 0: pair encoded array}, WT-length, RESIDUE_LETTERS index or -1 for unaligned positions
+    """
+    alignment_mappings = {}
+    wt_experimental_encoded_sequences = {}
+
+    for is_single in (1, 0):
+        subset = dms_data.loc[dms_data['Single'] == is_single]
+        if subset.empty:
+            alignment_mappings[is_single] = {}
+            wt_experimental_encoded_sequences[is_single] = None
+            continue
+
+        experiment_sequence = subset['Experiment Sequence'].iloc[0]
+        mapping, _ = align_sequence(experiment_sequence, wt_sequence)
+        alignment_mappings[is_single] = mapping
+
+        encoded = np.full(len(wt_sequence), fill_value=-1, dtype=int)
+        for dms_idx, wt_idx in mapping.items():
+            encoded[wt_idx] = RESIDUE_LETTERS.index(experiment_sequence[dms_idx])
+        wt_experimental_encoded_sequences[is_single] = encoded
+
+    return alignment_mappings, wt_experimental_encoded_sequences

@@ -10,9 +10,10 @@ from torch_geometric.loader import DataLoader
 
 sys.path.append(r"C:\Users\Arthur Zhou\GitHub\aps360_project\src")
 from data.tem_beta import Tem1BetaLactamaseDataset
-from data.split import split_by_position
+from data.data_utils import load_cif_structure, parse_structure
+from data.split import split_by_structural_position
 from model.gnn import Tem1BetaGNN
-from train.train_utils import min_max_normalize
+from train.train_utils import standardize, safe_pearson, safe_spearman
 from train.gnn.run import load_config
 
 
@@ -65,10 +66,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
     cfg = load_config(args.config)
 
-    # data load
+    # data load: must mirror run.py exactly or the "held out" split is not the held out split
     dms = pd.read_csv(args.processed_dms + "/dms_processed.csv")
-    train_df, val_df, test_df = split_by_position(dms, train_frac=cfg.data.train_size, val_frac=cfg.data.val_size, seed=args.seed)
-    train_df, val_df, test_df, (train_min, train_max) = min_max_normalize(train_df, val_df, test_df)
+    pdb_dir = os.path.dirname(args.processed_dms.rstrip("/\\"))
+    wt_sequence, _ = parse_structure(load_cif_structure(os.path.join(pdb_dir, f"{args.pdb_id}.cif"), args.pdb_id))
+    train_df, val_df, test_df = split_by_structural_position(
+        dms, wt_sequence, train_frac=cfg.data.train_size, val_frac=cfg.data.val_size, seed=args.seed,
+        n_blocks=getattr(cfg.data, "n_blocks", None))
+    train_df, val_df, test_df, (train_mean, train_std) = standardize(train_df, val_df, test_df)
 
     split_df = {"train": train_df, "val": val_df, "test": test_df}[args.split]
     dataset = Tem1BetaLactamaseDataset(dms_data=split_df, pdb_id=args.pdb_id, directed=args.directed, max_neighbours=cfg.data.neighbours)
@@ -93,14 +98,23 @@ if __name__ == "__main__":
 
     criterion = torch.nn.MSELoss(reduction='mean')
     loss, predictions, targets = run_inference(model, data_loader, criterion, device)
-    print(f"{args.split} loss: {loss:.6f}")
+
+    # Spearman is the headline number: it is what the evolutionary PSSM baseline and the
+    # zero-shot self-supervised scores are reported on, so it is the only directly
+    # comparable metric across the three. MSE here is on standardized labels, so a
+    # constant predictor scores ~1.0 and the value reads as 1 - R^2.
+    pearson_r = safe_pearson(predictions, targets)
+    spearman_rho = safe_spearman(predictions, targets)
+    baseline_mse = float(((targets - targets.mean()) ** 2).mean())
+    print(f"{args.split} loss: {loss:.6f} (constant-predictor baseline {baseline_mse:.6f}), "
+          f"Pearson r: {pearson_r:.4f}, Spearman rho: {spearman_rho:.4f}, n={len(predictions)}")
 
     if not args.dont_save_results:
         os.makedirs(args.output_dir, exist_ok=True)
 
         # invert
-        predictions_unscaled = predictions * (train_max - train_min) + train_min
-        targets_unscaled = targets * (train_max - train_min) + train_min
+        predictions_unscaled = predictions * train_std + train_mean
+        targets_unscaled = targets * train_std + train_mean
 
         results_df = pd.DataFrame({
             "target_normalized": targets,
@@ -111,6 +125,8 @@ if __name__ == "__main__":
         results_df.to_csv(os.path.join(args.output_dir, f"{args.split}_predictions.csv"), index=False)
 
         with open(os.path.join(args.output_dir, f"{args.split}_summary.json"), "w") as f:
-            json.dump({"split": args.split, "loss": loss, "n_samples": int(len(predictions))}, f, indent=2)
+            json.dump({"split": args.split, "loss": loss, "baseline_loss": baseline_mse,
+                       "pearson_r": pearson_r, "spearman_rho": spearman_rho,
+                       "n_samples": int(len(predictions))}, f, indent=2)
 
         print(f"Saved inference results to {args.output_dir}")

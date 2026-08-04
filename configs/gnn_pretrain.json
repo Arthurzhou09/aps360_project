@@ -2,33 +2,40 @@
   "seed": 1012,
 
   "model": {
-    "node_in_channels": 29,
+    "node_in_channels": 37,
     "edge_features_dim": 128,
-    "hidden_channels": 64,
+    "hidden_channels": 128,
     "head_hidden_channels": 32,
-    "mp_layers": 3,
+    "mp_layers": 2,
     "head_layers": 2,
-    "dropout": 0.2
+    "dropout": 0.2,
+    "encoder_rounds": 3,
+    "decoder_rounds": 3
   },
 
   "train": {
-    "lr": 0.00005,
+    "lr": 0.0005,
     "epochs": 100,
-    "weight_decay": 0.00001
+    "weight_decay": 0.01,
+    "warmup_epochs": 2,
+    "min_lr_factor": 0.05,
+    "grad_clip": 1.0,
+    "patience": 8
   },
 
   "data": {
     "neighbours": 20,
     "shuffle": true,
-    "num_workers": 4,
+    "num_workers": 0,
     "train_size": 0.8,
     "val_size": 0.1,
     "batch_size": 32,
+    "mask_ratio": 0.15,
     "cluster_kmer_k": 5,
     "cluster_similarity_threshold": 0.5
   },
 
   "logging": {
-    "output_dir": "./src/train/gnn/output_pretrain"
+    "output_dir": "./src/train/gnn/output_pretrain2"
   }
 }

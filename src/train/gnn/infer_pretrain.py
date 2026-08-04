@@ -82,6 +82,9 @@ if __name__ == "__main__":
                                                    cache_path=cluster_cache_path)
 
     split_df = {"train": train_df, "val": val_df, "test": test_df}[args.split]
+
+    print(f"Running inference on {args.split} split with {len(split_df)} homologs.")
+
     dataset = HomologMaskedDataset(split_df, pdb_id=args.pdb_id, directed=args.directed, max_neighbours=cfg.data.neighbours, seed=args.seed)
     data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 

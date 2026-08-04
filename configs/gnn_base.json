@@ -2,7 +2,7 @@
   "seed": 1012,
 
   "model": {
-    "node_in_channels": 29,
+    "node_in_channels": 57,
     "edge_features_dim": 128,
     "hidden_channels": 64,
     "reg_hidden_channels": 32,

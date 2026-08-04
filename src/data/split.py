@@ -14,6 +14,149 @@ def get_positions(code):
     """
     return [int(x) for x in re.findall(r'_([0-9]+)_', code)]
 
+def row_structural_positions(df, wt_sequence) -> pd.Series:
+    """
+    Map every DMS row to the set of *structural* residue indices (0..len(wt_sequence)-1)
+    it mutates.
+
+    This exists because 'Ambler Index' is an index into the row's own
+    'Experiment Sequence', and the single-mutant and pair-mutant experiments use
+    *different* sequences (287 vs 281 aa for TEM-1). 187 of 258 shared Ambler indices
+    therefore point at a different residue depending on the row's 'Single' value, so
+    grouping on the raw index does not group by position at all - it leaks residues
+    across splits. Aligning each experiment onto the PDB WT first gives a key that
+    actually identifies a residue.
+
+    args:
+        df: dms_processed.csv format, with 'Single', 'Ambler Index' and 'Experiment Sequence'
+        wt_sequence: reference (PDB) WT sequence
+    returns:
+        positions: Series of frozensets of structural node indices, aligned to df.index.
+            Empty frozenset for rows whose site(s) did not align onto the structure.
+    """
+    from data.data_utils import align_dms_experiment_sequences
+
+    alignment_mappings, _ = align_dms_experiment_sequences(df, wt_sequence)
+
+    def _positions(row):
+        mapping = alignment_mappings[row['Single']]
+        ambler = row['Ambler Index']
+        if ambler not in mapping:
+            return frozenset()
+        nodes = {mapping[ambler]}
+        if row['Single'] == 0:
+            # pair mutants are always at adjacent Ambler positions (Code = WT1_WT2_pos_MUT1_MUT2)
+            if (ambler + 1) not in mapping:
+                return frozenset()
+            nodes.add(mapping[ambler + 1])
+        return frozenset(nodes)
+
+    return df.apply(_positions, axis=1)
+
+
+def split_by_structural_position(
+    df,
+    wt_sequence,
+    train_frac=0.8,
+    val_frac=0.1,
+    seed=1012,
+    n_blocks=None,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Position-held-out split keyed on structural residue index rather than 'Ambler Index'
+    (see row_structural_positions for why the raw index leaks).
+
+    Two grouping modes:
+
+    - n_blocks=None: each residue is assigned independently, like the original
+      split_by_position. Correct and lossless for single mutants.
+    - n_blocks=K: residues are grouped into K *contiguous* segments and whole segments
+      are assigned. Needed whenever pair mutants are present: pair mutants tile every
+      consecutive position (the gap between successive pair start positions is exactly 1
+      at all 280 of them), so per-residue assignment necessarily splits adjacent pairs
+      across splits - 3809 of 17857 rows (21%) of the combined set belong to no split at
+      all under the original rule and are silently discarded. Contiguous segments only
+      break pairs that straddle a segment boundary, so the loss drops to ~K rows.
+
+    Rows are assigned to a split only if *all* their mutated residues fall in it;
+    the few remaining straddling rows are dropped and reported.
+
+    args:
+        df: dms_processed.csv format
+        wt_sequence: reference (PDB) WT sequence
+        n_blocks: number of contiguous residue segments, or None for per-residue assignment.
+            Defaults to 20 when the data contains pair mutants, None otherwise.
+    returns:
+        train_df, val_df, test_df
+    """
+    df = df.copy()
+    positions = row_structural_positions(df, wt_sequence)
+
+    if n_blocks is None and (df['Single'] == 0).any():
+        n_blocks = 20
+
+    all_nodes = sorted({n for s in positions for n in s})
+    if not all_nodes:
+        raise ValueError("No DMS rows aligned onto the WT structure.")
+
+    if n_blocks is None:
+        groups = {node: node for node in all_nodes}
+        group_ids = list(all_nodes)
+    else:
+        # contiguous segments over the structure, sized to hold roughly equal residue counts
+        edges = np.linspace(0, len(all_nodes), n_blocks + 1).astype(int)
+        groups = {}
+        for block_id, (lo, hi) in enumerate(zip(edges[:-1], edges[1:])):
+            for node in all_nodes[lo:hi]:
+                groups[node] = block_id
+        group_ids = sorted(set(groups.values()))
+
+    row_groups = positions.apply(lambda s: frozenset(groups[n] for n in s) if s else frozenset())
+
+    # size each group by how many rows it would carry, so the greedy fill tracks row counts
+    group_sizes = {g: 0 for g in group_ids}
+    for gs in row_groups:
+        if len(gs) == 1:
+            group_sizes[next(iter(gs))] += 1
+
+    rng = np.random.default_rng(seed)
+    rng.shuffle(group_ids)
+
+    fractions = {'train': train_frac, 'val': val_frac, 'test': 1 - train_frac - val_frac}
+    total = sum(group_sizes.values())
+    targets = {name: frac * total for name, frac in fractions.items()}
+    counts = {'train': 0, 'val': 0, 'test': 0}
+    assignment = {}
+
+    # fill whichever split is furthest below its target share, same rule as split_by_cluster
+    for group in group_ids:
+        split_name = min(counts, key=lambda name: counts[name] / targets[name] if targets[name] > 0 else float('inf'))
+        assignment[group] = split_name
+        counts[split_name] += group_sizes[group]
+
+    def _split_of(group_set):
+        if not group_set:
+            return None
+        names = {assignment[g] for g in group_set}
+        return names.pop() if len(names) == 1 else None # straddles a boundary
+
+    row_split = row_groups.apply(_split_of)
+    unaligned = int((row_groups.apply(len) == 0).sum())
+    straddling = int(row_split.isna().sum()) - unaligned
+    if unaligned:
+        # these never reach the model anyway: the Dataset filters them out on construction
+        print(f"split_by_structural_position: {unaligned}/{len(df)} rows did not align onto the structure")
+    if straddling:
+        print(f"split_by_structural_position: dropped {straddling}/{len(df)} rows "
+              f"({100*straddling/len(df):.1f}%) whose mutated residues straddle a split boundary")
+
+    train = df[row_split == 'train'].reset_index(drop=True)
+    val = df[row_split == 'val'].reset_index(drop=True)
+    test = df[row_split == 'test'].reset_index(drop=True)
+
+    return train, val, test
+
+
 def split_by_position(
     df,
     train_frac=0.8,
@@ -21,8 +164,13 @@ def split_by_position(
     seed=1012,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
+    DEPRECATED - use split_by_structural_position, which keys on the structural residue
+    index instead of the raw 'Ambler Index'. This version leaks residues across splits
+    whenever single and pair mutants are mixed, and silently drops every double mutant
+    that straddles a split. Kept only so existing notebooks keep running.
+
     Split the dms data by mutation position. All mutations in the same residue position will be
-    in the same split. TODO: Adress double mutants robustly.
+    in the same split.
 
     returns:
         train_df, val_df, test_df
@@ -189,7 +337,7 @@ def split_by_cluster(
     cache_path=None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Split by jaccard similarity of k-mers. All homologs with similar sequences (k-mer overlap) will be in the same split. Splits are not guranteed to be exactly the specified
+    Split by jaccard similarity of k-mers. All homologs with similar sequences (k-mer overlap) will be in the same split. Splits are not guranteed to be exactly the specified fraction.
     args:
         df: homolog_processed.csv dataframe
         k: k-mer size for clustering
@@ -206,7 +354,7 @@ def split_by_cluster(
     if cache_path is not None and os.path.exists(cache_path):
         cached = pd.read_csv(cache_path)
         id_to_cluster = dict(zip(cached['homolog_ID'], cached['cluster']))
-    else:
+    else: # clustter and save if it does not exist
         sequences = dict(zip(df['homolog_ID'], df['sequence']))
         id_to_cluster = cluster_homologs(sequences, k=k, threshold=threshold)
         if cache_path is not None:

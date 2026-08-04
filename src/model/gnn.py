@@ -6,7 +6,8 @@ class Tem1BetaGNN(nn.Module):
     """
     A simple GCN model with a single variate regression head for TEM-1 beta-lactamase fitness prediction.
     """
-    def __init__(self, node_in_channels, edge_features_dim, hidden_channels, reg_hidden_channels, mp_layers, head_layers, dropout=0.0):
+    def __init__(self, node_in_channels, edge_features_dim, hidden_channels, reg_hidden_channels, mp_layers, head_layers, dropout=0.0,
+                 encoder_rounds=1, decoder_rounds=1):
         super().__init__()
 
         self.node_in_channels = node_in_channels
@@ -16,9 +17,11 @@ class Tem1BetaGNN(nn.Module):
         self.mp_layers = mp_layers
         self.head_layers = head_layers
         self.dropout = dropout
+        self.encoder_rounds = encoder_rounds
+        self.decoder_rounds = decoder_rounds
 
-        self.encoder = EncoderLayer(node_in_channels, edge_features_dim, hidden_channels, mp_layers, dropout)
-        self.decoder = DecoderLayer(hidden_channels, reg_hidden_channels, mp_layers, head_layers, dropout)
+        self.encoder = EncoderLayer(node_in_channels, edge_features_dim, hidden_channels, mp_layers, dropout, mp_rounds=encoder_rounds)
+        self.decoder = DecoderLayer(hidden_channels, reg_hidden_channels, mp_layers, head_layers, dropout, mp_rounds=decoder_rounds)
 
     def forward(self, x, edge_index, edge_attr, batch, mutation_idx):
         # Simple GCN layer implementation
@@ -35,7 +38,8 @@ class Tem1MaskedResidueGNN(nn.Module):
     pooling step since every node gets its own prediction. Used to score a mutation
     zero-shot [log P(mutant|structure) - log P(WT|structure) (mutation score)] at a masked position, without ever training on DMS fitness labels.
     """
-    def __init__(self, node_in_channels, edge_features_dim, hidden_channels, head_hidden_channels, mp_layers, head_layers, dropout=0.0):
+    def __init__(self, node_in_channels, edge_features_dim, hidden_channels, head_hidden_channels, mp_layers, head_layers, dropout=0.0,
+                 encoder_rounds=1, decoder_rounds=1):
         super().__init__()
 
         self.node_in_channels = node_in_channels
@@ -45,9 +49,11 @@ class Tem1MaskedResidueGNN(nn.Module):
         self.mp_layers = mp_layers
         self.head_layers = head_layers
         self.dropout = dropout
+        self.encoder_rounds = encoder_rounds
+        self.decoder_rounds = decoder_rounds
 
-        self.encoder = EncoderLayer(node_in_channels, edge_features_dim, hidden_channels, mp_layers, dropout)
-        self.decoder = MaskedResidueDecoderLayer(hidden_channels, head_hidden_channels, mp_layers, head_layers, dropout)
+        self.encoder = EncoderLayer(node_in_channels, edge_features_dim, hidden_channels, mp_layers, dropout, mp_rounds=encoder_rounds)
+        self.decoder = MaskedResidueDecoderLayer(hidden_channels, head_hidden_channels, mp_layers, head_layers, dropout, mp_rounds=decoder_rounds)
 
     def forward(self, x, edge_index, edge_attr):
         x, edge_attribute = self.encoder(x, edge_index, edge_attr)

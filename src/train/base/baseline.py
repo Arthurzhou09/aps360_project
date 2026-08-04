@@ -9,9 +9,10 @@ import sys
 
 sys.path.append(r"C:\Users\Arthur Zhou\GitHub\aps360_project\src")
 from data.tem_beta import MLPDataset
-from data.split import split_by_position
+from data.data_utils import load_cif_structure, parse_structure
+from data.split import split_by_structural_position
 from model.mlp import MLP
-from train.train_utils import EarlyStopping, min_max_normalize
+from train.train_utils import EarlyStopping, standardize, set_seed
 
 
 def train(model, num_epochs, train_loader, val_loader, optimizer, criterion, device, output_dir, early_stopping=None):
@@ -108,8 +109,13 @@ if __name__ == "__main__":
     ### Data Loading ###
     dms = pd.read_csv(args.processed_dms + "/dms_processed.csv")
 
-    train_df, val_df, _ = split_by_position(dms, train_frac=args.train_size, val_frac=args.val_size, seed=args.seed)
-    train_df, val_df, _, _= min_max_normalize(train_df, val_df, None)
+    # same split and label scaling as the GNN (src/train/gnn/run.py) - the MLP is only a
+    # meaningful baseline if it is held out on the same residues
+    set_seed(args.seed)
+    pdb_dir = os.path.dirname(args.processed_dms.rstrip("/\\"))
+    wt_sequence, _ = parse_structure(load_cif_structure(os.path.join(pdb_dir, f"{args.pdb_id}.cif"), args.pdb_id))
+    train_df, val_df, _ = split_by_structural_position(dms, wt_sequence, train_frac=args.train_size, val_frac=args.val_size, seed=args.seed)
+    train_df, val_df, _, _ = standardize(train_df, val_df, None)
 
     dataset_train = MLPDataset(dms_data=train_df, pdb_id=args.pdb_id,)
     train_loader = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)

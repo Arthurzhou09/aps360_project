@@ -10,9 +10,10 @@ from torch.utils.data import DataLoader
 
 sys.path.append(r"C:\Users\Arthur Zhou\GitHub\aps360_project\src")
 from data.tem_beta import MLPDataset
-from data.split import split_by_position
+from data.data_utils import load_cif_structure, parse_structure
+from data.split import split_by_structural_position
 from model.mlp import MLP
-from train.train_utils import min_max_normalize
+from train.train_utils import standardize
 
 
 def run_inference(model, data_loader, criterion, device):
@@ -71,8 +72,11 @@ if __name__ == "__main__":
 
     # data loading
     dms = pd.read_csv(args.processed_dms + "/dms_processed.csv")
-    train_df, val_df, test_df = split_by_position(dms, train_frac=args.train_size, val_frac=args.val_size, seed=args.seed)
-    train_df, val_df, test_df, (train_min, train_max) = min_max_normalize(train_df, val_df, test_df)
+    # must mirror baseline.py exactly, or the "held out" split is not the held out split
+    pdb_dir = os.path.dirname(args.processed_dms.rstrip("/\\"))
+    wt_sequence, _ = parse_structure(load_cif_structure(os.path.join(pdb_dir, f"{args.pdb_id}.cif"), args.pdb_id))
+    train_df, val_df, test_df = split_by_structural_position(dms, wt_sequence, train_frac=args.train_size, val_frac=args.val_size, seed=args.seed)
+    train_df, val_df, test_df, (train_mean, train_std) = standardize(train_df, val_df, test_df)
 
     split_df = {"train": train_df, "val": val_df, "test": test_df}[args.split]
     dataset = MLPDataset(dms_data=split_df, pdb_id=args.pdb_id)
@@ -95,8 +99,8 @@ if __name__ == "__main__":
         os.makedirs(args.output_dir, exist_ok=True)
 
         # invert
-        predictions_unscaled = predictions * (train_max - train_min) + train_min
-        targets_unscaled = targets * (train_max - train_min) + train_min
+        predictions_unscaled = predictions * train_std + train_mean
+        targets_unscaled = targets * train_std + train_mean
 
         results_df = pd.DataFrame({
             "target_normalized": targets,

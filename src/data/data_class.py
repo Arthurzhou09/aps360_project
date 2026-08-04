@@ -111,10 +111,17 @@ class HomologGraphData(Data):
         edge_index=None,
         mask_idx=None,
         labels=None,
+        mut_aa_idx=None,
+        fitness=None,
     ):
         """
-        A class representing a self-supervised masked-residue training sample: a homolog
-        sequence threaded onto the WT structure graph with one residue masked out.
+        A class representing a masked-residue sample: a sequence threaded onto the WT
+        structure graph with one or more residues masked out. Used both for
+        self-supervised pretraining (a random homolog position is masked, labels holds
+        its true identity) and for zero-shot DMS scoring (the known mutated position(s)
+        are masked instead, labels holds the WT identity there, and mut_aa_idx/fitness
+        carry what's needed to score the mutation: log P(mutant) - log P(WT) vs measured
+        fitness).
 
         Args:
             distance_features: distances between residues (pairwise distances between N, Ca, C, O),
@@ -122,7 +129,9 @@ class HomologGraphData(Data):
             sequence: WT amino acid sequence of the protein (reference only, not used by the model), expected shape [N].
             edge_index: Edge indices representing the connectivity of residues, expected shape [2, E]
             mask_idx: Mask indicating the masked position(s) in the sequence, expected shape [N,]
-            labels: True amino acid index (0-19) at masked position(s), -100 (CrossEntropyLoss ignore_index) elsewhere, expected shape [N,]
+            labels: True (WT, for DMS scoring) amino acid index (0-19) at masked position(s), -100 (CrossEntropyLoss ignore_index) elsewhere, expected shape [N,]
+            mut_aa_idx: DMS scoring only - mutant amino acid index (0-19) at masked position(s), -1 elsewhere, expected shape [N,]
+            fitness: DMS scoring only - measured fitness for this mutation, to correlate against the zero-shot score
         """
         super(HomologGraphData, self).__init__()
         if distance_features is not None:
@@ -137,3 +146,7 @@ class HomologGraphData(Data):
             self.mask_idx = mask_idx
         if labels is not None:
             self.labels = labels
+        if mut_aa_idx is not None:
+            self.mut_aa_idx = mut_aa_idx
+        if fitness is not None:
+            self.fitness = fitness
