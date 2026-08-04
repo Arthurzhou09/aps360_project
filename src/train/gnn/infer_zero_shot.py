@@ -10,6 +10,7 @@ from torch_geometric.loader import DataLoader
 
 sys.path.append(r"C:\Users\Arthur Zhou\GitHub\aps360_project\src")
 from data.homolog import HomologMaskedDataset
+from data.data_utils import load_cif_structure, parse_structure, align_dms_experiment_sequences, real_mutation_mask
 from model.gnn import Tem1MaskedResidueGNN
 from train.train_utils import load_config, safe_pearson, safe_spearman
 
@@ -86,6 +87,17 @@ if __name__ == "__main__":
     # data load: dms_processed.csv (single and/or pair mutants), scored zero-shot - never
     # used for training, so there is no train/val/test split to worry about here.
     dms_df = pd.read_csv(os.path.join(args.processed_dms, "dms_processed.csv"))
+
+    # drop the rows that don't change any residue. log P(mutant) - log P(WT) is identically
+    # 0 for those while their fitness is WT-level, so they add ~0.08 Spearman of free
+    # signal. evolutionary/infer.py drops the same rows, so the two numbers stay comparable.
+    pdb_dir = os.path.dirname(args.processed_dms.rstrip("/\\"))
+    wt_sequence, _ = parse_structure(load_cif_structure(os.path.join(pdb_dir, f"{args.pdb_id}.cif"), args.pdb_id))
+    alignment_mappings, wt_encoded = align_dms_experiment_sequences(dms_df, wt_sequence)
+    keep = real_mutation_mask(dms_df, alignment_mappings, wt_encoded)
+    print(f"scoring {int(keep.sum())} real mutations ({len(dms_df) - int(keep.sum())} rows dropped: unaligned or no residue change)")
+    dms_df = dms_df.loc[keep].reset_index(drop=True)
+
     dataset = HomologMaskedDataset(dms_data=dms_df, pdb_id=args.pdb_id, test=True, directed=args.directed, max_neighbours=cfg.data.neighbours)
     data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
