@@ -72,6 +72,12 @@ if __name__ == "__main__":
     parser.add_argument("--pdb_id", type=str, default="1BTL", help="PDB ID for the protein structure.")
     parser.add_argument("--output_dir", type=str, default="./src/train/evolutionary/output/inference", help="Directory to save scoring results.")
     parser.add_argument("--dont_save_results", action="store_true", help="Skip saving predictions/summary to output_dir.")
+    parser.add_argument("--restrict_to", type=str, default=None,
+                        help="Path to another model's predictions CSV (any file with a 'Code' column). "
+                             "The baseline is then scored on exactly that row set, so the two numbers are "
+                             "comparable. Needed whenever a model cannot score every mutation - an "
+                             "MSA-pretrained GNN drops the ~860 rows whose site has no match column, and "
+                             "a baseline scored on the full set would not be a like-for-like comparison.")
     args = parser.parse_args()
 
     wt_sequence, _ = parse_structure(load_cif_structure(f"{args.pdb_dir}/{args.pdb_id}.cif", args.pdb_id))
@@ -82,6 +88,20 @@ if __name__ == "__main__":
     pssm = pssm_df[RESIDUE_LETTERS].to_numpy()
 
     results_df = score_dms_data(dms_data, alignment_mappings, wt_experimental_encoded_sequences, pssm)
+
+    if args.restrict_to is not None:
+        reference = pd.read_csv(args.restrict_to)
+        if "Code" not in reference.columns:
+            raise ValueError(f"{args.restrict_to} has no 'Code' column, so its row set cannot be matched. "
+                             f"gnn/infer.py, gnn/infer_zero_shot.py and this script all emit one.")
+        wanted = set(reference["Code"])
+        before = len(results_df)
+        results_df = results_df[results_df["Code"].isin(wanted)].reset_index(drop=True)
+        # rows the reference scored but the PSSM could not - the comparison is only exact
+        # when this is zero, so report it rather than letting it pass silently
+        missing = len(wanted) - len(results_df)
+        print(f"restricted to {os.path.basename(args.restrict_to)}: {before} -> {len(results_df)} rows"
+              + (f" ({missing} of the reference's rows are not scoreable by the PSSM)" if missing else ""))
 
     pearson_r = safe_pearson(results_df["Fitness"], results_df["evolutionary_score"])
     spearman_rho = safe_spearman(results_df["Fitness"], results_df["evolutionary_score"])
@@ -95,5 +115,7 @@ if __name__ == "__main__":
                 "n_samples": int(len(results_df)),
                 "pearson_r": pearson_r,
                 "spearman_rho": spearman_rho,
+                # recorded so a saved number can never be mistaken for the full-set one
+                "restricted_to": args.restrict_to,
             }, f, indent=2)
         print(f"Saved evolutionary baseline results to {args.output_dir}")
