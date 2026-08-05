@@ -229,6 +229,46 @@ def filter_homologs_by_identity(sequences: dict, wt_sequence: str, min_identity:
     return pd.DataFrame.from_records(records, columns=['homolog_ID', 'percent_identity', 'sequence'])
 
 
+def load_dms(processed_dms_dir: str, wt_sequence: str, drop_non_mutations: bool = True) -> pd.DataFrame:
+    """
+    Load dms_processed.csv and (by default) drop rows that change no residue.
+
+    Single entry point for every supervised and zero-shot script, so they all train and
+    report on the same population. The ~1.5% of rows that are WT-to-itself are real
+    measurements, but they are trivially separable - their delta features are all zero and
+    their WT one-hot equals their mutant one-hot - and they sit far above everything else
+    (mean standardized fitness +1.6 to +1.9, versus roughly 0 for real mutations). Left in,
+    they inflate the single-mutant Spearman for free.
+
+    They also break comparability: evolutionary/infer.py and gnn/infer_zero_shot.py already
+    exclude them, so leaving them in the supervised path would score the two model families
+    on different row sets.
+
+    args:
+        processed_dms_dir: directory containing dms_processed.csv
+        wt_sequence: reference (PDB) WT sequence
+        drop_non_mutations: set False to keep every row (e.g. for data inspection)
+    returns:
+        dms_data: DataFrame in dms_processed.csv format
+    """
+    import os
+
+    dms_data = pd.read_csv(os.path.join(processed_dms_dir, "dms_processed.csv"))
+    if not drop_non_mutations:
+        return dms_data
+
+    alignment_mappings, wt_encoded = align_dms_experiment_sequences(dms_data, wt_sequence)
+    keep = real_mutation_mask(dms_data, alignment_mappings, wt_encoded)
+    # unaligned rows are left in: the Dataset classes filter those themselves, and dropping
+    # them here would change the split's residue blocks relative to previous runs
+    aligned = np.array([bool(alignment_mappings[r['Single']]) and r['Ambler Index'] in alignment_mappings[r['Single']]
+                        for _, r in dms_data.iterrows()])
+    drop = aligned & ~keep
+    if drop.any():
+        print(f"load_dms: dropped {int(drop.sum())}/{len(dms_data)} rows that change no residue")
+    return dms_data.loc[~drop].reset_index(drop=True)
+
+
 def real_mutation_mask(dms_data: pd.DataFrame, alignment_mappings: dict, wt_experimental_encoded_sequences: dict) -> np.ndarray:
     """
     Boolean mask, True for rows that actually change at least one residue.

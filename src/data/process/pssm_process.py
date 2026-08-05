@@ -34,7 +34,7 @@ if __name__ == "__main__":
             if aa in RESIDUE_LETTERS:
                 counts[wt_idx, RESIDUE_LETTERS.index(aa)] += 1
 
-    # Apply pseudocount and make matrix
+    # Apply pseudocount and make freq matrix
     smoothed = counts + args.pseudocount
     frequencies = smoothed / smoothed.sum(axis=1, keepdims=True)
 

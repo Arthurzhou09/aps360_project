@@ -2,7 +2,7 @@ from sys import platform
 import torch
 from data.data_class import DataClass, ProteinGraphData
 from data.feature_utils import *
-from data.feature_utils import _one_hot_aa # leading underscore, so not picked up by import *
+from data.feature_utils import _one_hot_aa, _union_edges # leading underscore, so not picked up by import *
 from data.data_utils import *
 import pandas as pd
 import numpy as np
@@ -27,11 +27,28 @@ class Tem1BetaLactamaseDataset(DataClass):
         ProteinGraphData 
     """
 
-    def __init__(self, dms_data: pd.DataFrame, pdb_id:str, directed = True, max_neighbours=16):
-        self.wt_sequence, self.atomic_pos = parse_structure(load_cif_structure(f"{PROCESSED_DATA_DIR}/{pdb_id}.cif", pdb_id))
+    def __init__(self, dms_data: pd.DataFrame, pdb_id:str, directed = True, max_neighbours=16,
+                 aa_features: str = "aaindex8", radius: float = None, dci_k: int = None,
+                 dci_threshold: float = None, dci_add_spatial: bool = False):
+        structure = load_cif_structure(f"{PROCESSED_DATA_DIR}/{pdb_id}.cif", pdb_id)
+        self.wt_sequence, self.atomic_pos = parse_structure(structure)
         self.wt_sequence_encoded = np.array([RESIDUE_LETTERS.index(i) for i in self.wt_sequence])
         self.aa_index = pd.read_csv(f"{PROCESSED_DATA_DIR}/aa_index_data.csv")
-        self.aa_to_value, _ = encode_aaindex_features(self.aa_index) # AA letter -> standardized property vector, for the mutation delta feature
+
+        # aa_features picks the per-residue property set. "aaindex8" is the 8 hand-picked
+        # indices in aa_index_data.csv (76% of the AAindex space); "pca19" is the one I took from online.
+        self.aa_features = aa_features
+        if aa_features == "pca19":
+            self.aa_to_value = load_pca_aa_features(f"{PROCESSED_DATA_DIR}/pca-19.npy")
+        elif aa_features == "aaindex8":
+            self.aa_to_value, _ = encode_aaindex_features(self.aa_index) # AA letter -> standardized property vector, for the mutation delta feature
+        else:
+            raise ValueError(f"unknown aa_features {aa_features!r}; expected 'aaindex8' or 'pca19'")
+        self.n_aa_props = len(next(iter(self.aa_to_value.values())))
+
+        # burial / centrality of each position: the only structural description the nodes get.
+        # Static per structure, so built once here rather than per sample.
+        self.structural_features = build_structural_features(self.atomic_pos, structure=structure)
 
         # align the experimental sequence with pdb wt. (single and pair)
         if (dms_data['Single'] == 1).any():
@@ -78,8 +95,31 @@ class Tem1BetaLactamaseDataset(DataClass):
 
         # static features and labels
         self.labels=self.dms['Fitness'].to_numpy(copy=True)
-        self.distance_features = build_distance_features(self.atomic_pos, k=max_neighbours, directed=directed)
-        self.edge_index = build_backbone_edge_index(self.atomic_pos, k=max_neighbours, directed=directed)
+        if dci_k is not None:
+            dci_edges, asymmetry = build_dci_edge_index(
+                structure, k=dci_k, threshold=dci_threshold,
+                cache_path=f"{PROCESSED_DATA_DIR}/{pdb_id}_dci_perturbation.npy",
+                return_asymmetry=True)
+
+            if dci_add_spatial:
+                # union with the proximity graph. On its own the DCI graph swaps local
+                # packing for long-range coupling.
+                spatial_edges = build_backbone_edge_index(
+                    self.atomic_pos, k=max_neighbours, directed=directed, radius=radius)
+                self.edge_index, source_flags = _union_edges(dci_edges, spatial_edges)
+            else:
+                self.edge_index = dci_edges
+                source_flags = None
+
+            rbf = build_distance_features(self.atomic_pos, edge_index=self.edge_index)
+            coupling = asymmetry[self.edge_index[1], self.edge_index[0]][:, None] # A[responder, driver]
+            coupling = coupling / (np.abs(asymmetry).max() or 1.0)
+            blocks = [rbf, coupling] if source_flags is None else [rbf, coupling, source_flags]
+            self.distance_features = np.concatenate(blocks, axis=1)
+        else:
+            self.distance_features = build_distance_features(self.atomic_pos, k=max_neighbours, directed=directed, radius=radius)
+            self.edge_index = build_backbone_edge_index(self.atomic_pos, k=max_neighbours, directed=directed, radius=radius)
+        print(f"size of edge indexs: {self.edge_index.shape}, size of distance features: {self.distance_features.shape}")
 
         # the graph is the same WT structure for every sample, so build these tensors once
         # instead of re-materializing (E, 128) floats per __getitem__ call
@@ -90,7 +130,7 @@ class Tem1BetaLactamaseDataset(DataClass):
         # the WT background is identical across samples too: only the mutated site(s) change,
         # so build the WT node-feature block once and overwrite the mutated rows per sample.
         self.wt_node_features = {
-            single: build_node_features(encoded, self.aa_index) if encoded is not None else None
+            single: build_node_features(encoded, self.aa_index, aa_to_value=self.aa_to_value) if encoded is not None else None
             for single, encoded in self.wt_experimental_encoded_sequences.items()
         }
 
@@ -160,8 +200,10 @@ class Tem1BetaLactamaseDataset(DataClass):
 
         # first 37 columns (mask + one-hot + AAindex + delta) match HomologMaskedDataset's
         # layout, so the two models' encoders see the same features in the same order.
+        # structural_features are appended last and are identical for every sample.
         aaindex_node_features = np.concatenate(
-            [mutation_idx[:,None], aaindex_node_features, delta_features, wt_onehot_features], axis=1)
+            [mutation_idx[:,None], aaindex_node_features, delta_features, wt_onehot_features,
+             self.structural_features], axis=1)
 
         protein_graph = ProteinGraphData(
             distance_features=self.distance_features_tensor,
@@ -170,6 +212,7 @@ class Tem1BetaLactamaseDataset(DataClass):
             edge_index=self.edge_index_tensor,
             mutation_idx=torch.tensor(mutation_idx, dtype=torch.bool), # used by decoder to pool mutated residues
             fitness =torch.tensor(fitness_label, dtype=torch.float),
+            is_single=torch.tensor([int(sample['Single'])], dtype=torch.long), # for per-group metrics, not a model input
         )
 
         return protein_graph
@@ -186,10 +229,23 @@ class MLPDataset(DataClass):
         fitness_label: Fitness value for the mutation(s).
     """
 
-    def __init__(self, dms_data: pd.DataFrame, pdb_id:str):
-        self.wt_sequence, self.atomic_pos = parse_structure(load_cif_structure(f"{PROCESSED_DATA_DIR}/{pdb_id}.cif", pdb_id))
+    def __init__(self, dms_data: pd.DataFrame, pdb_id:str, aa_features: str = "aaindex8"):
+        structure = load_cif_structure(f"{PROCESSED_DATA_DIR}/{pdb_id}.cif", pdb_id)
+        self.wt_sequence, self.atomic_pos = parse_structure(structure)
         self.wt_sequence_encoded = np.array([RESIDUE_LETTERS.index(i) for i in self.wt_sequence])
         self.aa_index = pd.read_csv(f"{PROCESSED_DATA_DIR}/aa_index_data.csv")
+
+        # must match the GNN's aa_features for the baseline comparison to be about the model
+        self.aa_features = aa_features
+        if aa_features == "pca19":
+            self.aa_to_value = load_pca_aa_features(f"{PROCESSED_DATA_DIR}/pca-19.npy")
+        elif aa_features == "aaindex8":
+            self.aa_to_value, _ = encode_aaindex_features(self.aa_index)
+        else:
+            raise ValueError(f"unknown aa_features {aa_features!r}; expected 'aaindex8' or 'pca19'")
+
+        # same descriptors the GNN gets, taken at the mutated site(s).
+        self.structural_features = build_structural_features(self.atomic_pos, structure=structure)
 
         # align the experimental sequence with pdb wt. (single and pair)
         if (dms_data['Single'] == 1).any():
@@ -235,10 +291,24 @@ class MLPDataset(DataClass):
 
         # static features and labels
         self.labels=self.dms['Fitness'].to_numpy(copy=True)
-    
+
     def __len__(self):
         return len(self.dms)
-    
+
+    @property
+    def feature_dim(self) -> int:
+        """
+        Width of one sample's feature vector, for sizing the model's input layer.
+
+        Read off an actual sample rather than recomputed from a formula, so a caller cannot
+        drift from what __getitem__ returns. It moves with aa_features: 137 for aaindex8
+        (2 sites * (2*20 one-hot + 3*8 props) + has_site_2 + 2*4 structural) but 203 for
+        pca19's 19 components, which is exactly the kind of arithmetic that goes stale in an
+        argparse default.
+        """
+        if len(self) == 0:
+            raise ValueError("cannot infer feature_dim from an empty MLPDataset")
+        return int(self[0][0].numel())
 
     def __getitem__(self, idx):
         """
@@ -257,20 +327,26 @@ class MLPDataset(DataClass):
 
         wt_aa_1 = wt_experimental_encoded_sequence[node_idx]
         mut_aa_1 = RESIDUE_LETTERS.index(code[3] if is_pair else code[2])
-        site_1_features = build_mutation_features(wt_aa_1, mut_aa_1, self.aa_index)
+        site_1_features = build_mutation_features(wt_aa_1, mut_aa_1, self.aa_index, aa_to_value=self.aa_to_value)
 
         # site 2 only exists for pair mutations with a valid adjacent alignment
         site_2_features = np.zeros_like(site_1_features)
+        site_2_structural = np.zeros(self.structural_features.shape[1])
         has_site_2 = False
         if is_pair and (sample['Ambler Index'] + 1) in alignment_mapping:
             node_idx_2 = alignment_mapping[sample['Ambler Index'] + 1]
             wt_aa_2 = wt_experimental_encoded_sequence[node_idx_2]
             mut_aa_2 = RESIDUE_LETTERS.index(code[4])
-            site_2_features = build_mutation_features(wt_aa_2, mut_aa_2, self.aa_index)
+            site_2_features = build_mutation_features(wt_aa_2, mut_aa_2, self.aa_index, aa_to_value=self.aa_to_value)
+            site_2_structural = self.structural_features[node_idx_2]
             has_site_2 = True
 
-        aaindex_features = np.concatenate([site_1_features, site_2_features, [float(has_site_2)]])
+        aaindex_features = np.concatenate([site_1_features, site_2_features, [float(has_site_2)],
+                                           self.structural_features[node_idx], site_2_structural])
         aaindex_features = torch.tensor(aaindex_features, dtype=torch.float)
         fitness_label = torch.tensor(self.labels[idx], dtype=torch.float)
+        # returned so the baseline can report per-group metrics like the GNN does; the model
+        # itself already sees the group through the has_site_2 flag above
+        is_single = torch.tensor(int(sample['Single']), dtype=torch.long)
 
-        return aaindex_features, fitness_label
+        return aaindex_features, fitness_label, is_single

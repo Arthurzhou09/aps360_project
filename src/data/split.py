@@ -72,13 +72,10 @@ def split_by_structural_position(
       split_by_position. Correct and lossless for single mutants.
     - n_blocks=K: residues are grouped into K *contiguous* segments and whole segments
       are assigned. Needed whenever pair mutants are present: pair mutants tile every
-      consecutive position (the gap between successive pair start positions is exactly 1
-      at all 280 of them), so per-residue assignment necessarily splits adjacent pairs
-      across splits - 3809 of 17857 rows (21%) of the combined set belong to no split at
-      all under the original rule and are silently discarded. Contiguous segments only
-      break pairs that straddle a segment boundary, so the loss drops to ~K rows.
+      consecutive position, so per-residue assignment necessarily splits adjacent pairs
+      across splits. 
 
-    Rows are assigned to a split only if *all* their mutated residues fall in it;
+    Rows are assigned to a split only if all their mutated residues fall in it;
     the few remaining straddling rows are dropped and reported.
 
     args:
@@ -154,7 +151,32 @@ def split_by_structural_position(
     val = df[row_split == 'val'].reset_index(drop=True)
     test = df[row_split == 'test'].reset_index(drop=True)
 
+    describe_split(train, val, test)
+
     return train, val, test
+
+
+def describe_split(train, val, test):
+    """
+    Print each split's single/double composition and warn if a group is missing or thin.
+
+    Blocks are assigned to balance total row counts, not group counts, so a split could in
+    principle end up with too few of one group to compute a within-group correlation - and
+    the per-group metrics are exactly what makes a combined single+double run interpretable
+    (a mutation counter alone scores ~0.32 combined Spearman). Worth catching at split time
+    rather than as a nan halfway through training.
+    """
+    print(f"{'split':6s} {'rows':>7s} {'single':>8s} {'double':>8s}")
+    for name, part in (('train', train), ('val', val), ('test', test)):
+        if 'Single' not in part.columns:
+            return
+        n_single = int((part['Single'] == 1).sum())
+        n_double = int((part['Single'] == 0).sum())
+        print(f"{name:6s} {len(part):7d} {n_single:8d} {n_double:8d}")
+        for group, count in (('single', n_single), ('double', n_double)):
+            if len(part) and count < 2:
+                print(f"  WARNING: {name} has {count} {group} mutants - "
+                      f"within-group correlation is undefined for it")
 
 
 def split_by_position(
