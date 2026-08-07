@@ -23,6 +23,9 @@ Normalized frequency of beta-sheet. Tem-beta has aalpha beta scaffold.
 ### CHOP780201 (alpha-helix propensity)
 Normalized frequency of alpha-helix. Tem-beta has alpha beta scaffold.
 
+### *NEW* Use PCA condensed AAindex
+Taken from: https://github.com/gitter-lab/nn4dms/tree/master/data/aaindex
+
 
 
 ### PF00144 (Beta-lactamase family, Pfam/InterPro)
@@ -35,3 +38,8 @@ Downloads (via `homolog_process.py`):
   https://www.ebi.ac.uk/interpro/api/entry/pfam/PF00144/?annotation=alignment:seed
 
 Fallback: UniRef90, ~30GB compressed, https://ftp.uniprot.org/pub/databases/uniprot/uniref/uniref90/uniref90.fasta.: prob not doing this this is too much.
+
+
+### MSA 
+go to: https://proteingym.org/download
+After unzipping, find `BLAT_ECOLX_full_11-26-2021_b02.a2m`
