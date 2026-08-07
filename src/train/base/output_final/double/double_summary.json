@@ -1,0 +1,10 @@
+{
+  "split": "double",
+  "loss": 1.7842989005515797,
+  "baseline_loss": 0.8740743398666382,
+  "pearson_r": 0.17787593850462463,
+  "spearman_rho": 0.11846737699386975,
+  "n_samples": 507,
+  "spearman_double": 0.11846737699386975,
+  "n_double": 507
+}

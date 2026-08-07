@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 sys.path.append(r"C:\Users\Arthur Zhou\GitHub\aps360_project\src")
 from data.tem_beta import MLPDataset
 from data.data_utils import load_cif_structure, parse_structure, load_dms
-from data.split import split_by_structural_position
+from data.split import split_by_random, split_by_structural_position, held_out_doubles
 from model.mlp import MLP
 from train.train_utils import standardize, safe_pearson, safe_spearman
 
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     parser.add_argument("--pdb_id", type=str, default="1BTL", help="PDB ID for the protein structure.")
     parser.add_argument("--aa_features", type=str, default=None, choices=["aaindex8", "pca19"], help="Per-residue property set. Must match what the checkpoint was trained with.")
     parser.add_argument("--model_path", type=str, required=True, help="Path to the trained model checkpoint.")
-    parser.add_argument("--output_dir", type=str, default="./src/train/base/output/inference", help="Directory to save inference results.")
+    parser.add_argument("--output_dir", type=str, default="./src/train/base/inference", help="Directory to save inference results.")
 
     # the split has to be reproduced exactly or the "held out" split is not held out. Pass the
     # same --config baseline.py was given and these are read from it instead of retyped.
@@ -68,11 +68,12 @@ if __name__ == "__main__":
     parser.add_argument("--train_size", type=float, default=None, help="Fraction of data used for training.")
     parser.add_argument("--val_size", type=float, default=None, help="Fraction of data used for validation.")
     parser.add_argument("--n_blocks", type=int, default=None, help="Contiguous residue blocks used for the split.")
-    parser.add_argument("--seed", type=int, default=None, help="Random seed used for the train/val/test split.")
-    parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test"], help="Which split to run inference on.")
+    parser.add_argument("--seed", type=int, default=1012, help="Random seed used for the train/val/test split.")
+    parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test", "double", "random"], help="Which split to run inference on. 'double' scores held-out DOUBLE mutants and needs --processed_dms to point at the combined 'both' directory.")
+    parser.add_argument("--doubles_scope", type=str, default="unseen", choices=["unseen", "all"], help="--split double only. 'unseen' keeps doubles with neither residue in the training split; 'all' keeps every aligned double (leaky, for contrast).")
 
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for inference.")
-    parser.add_argument("--num_workers", type=int, default=4, help="Number of dataloader workers.")
+    parser.add_argument("--num_workers", type=int, default=0, help="Number of dataloader workers.")
     parser.add_argument("--dont_save_results", action="store_true", help="Save loss and predictions (normalized and unscaled) to output_dir.")
 
     args = parser.parse_args()
@@ -96,12 +97,26 @@ if __name__ == "__main__":
     pdb_dir = os.path.dirname(args.processed_dms.rstrip("/\\"))
     wt_sequence, _ = parse_structure(load_cif_structure(os.path.join(pdb_dir, f"{args.pdb_id}.cif"), args.pdb_id))
     dms = load_dms(args.processed_dms, wt_sequence)
-    train_df, val_df, test_df = split_by_structural_position(
-        dms, wt_sequence, train_frac=settings["train_size"], val_frac=settings["val_size"],
-        seed=settings["seed"], n_blocks=settings["n_blocks"])
-    train_df, val_df, test_df, (train_mean, train_std) = standardize(train_df, val_df, test_df)
-
-    split_df = {"train": train_df, "val": val_df, "test": test_df}[args.split]
+    if args.split == "random":
+        print("random split")
+        train_df, val_df, test_df = split_by_random(dms, train_frac=settings["train_size"], val_frac=settings["val_size"], seed=args.seed)
+        _, _, split_df, (train_mean, train_std) = standardize(train_df, val_df, test_df)
+        print(f"n = {len(split_df)}")
+    elif args.split == "double":
+        # doubles the singles-trained model never saw, plus the singles train split their
+        # labels are standardized against, so the MSE stays on the same scale as the
+        # train/val/test numbers. Identical row selection to gnn/infer.py by construction:
+        # both call held_out_doubles with the split settings their checkpoint was trained on.
+        split_df, reference_train = held_out_doubles(
+            dms, wt_sequence, train_frac=settings["train_size"], val_frac=settings["val_size"],
+            seed=settings["seed"], n_blocks=settings["n_blocks"], scope=args.doubles_scope)
+        _, split_df, _, (train_mean, train_std) = standardize(reference_train, split_df, None)
+    else:
+        train_df, val_df, test_df = split_by_structural_position(
+            dms, wt_sequence, train_frac=settings["train_size"], val_frac=settings["val_size"],
+            seed=settings["seed"], n_blocks=settings["n_blocks"])
+        train_df, val_df, test_df, (train_mean, train_std) = standardize(train_df, val_df, test_df)
+        split_df = {"train": train_df, "val": val_df, "test": test_df}[args.split]
     dataset = MLPDataset(dms_data=split_df, pdb_id=args.pdb_id, aa_features=settings["aa_features"])
     data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers)
 
@@ -149,12 +164,17 @@ if __name__ == "__main__":
         predictions_unscaled = predictions * train_std + train_mean
         targets_unscaled = targets * train_std + train_mean
 
-        results_df = pd.DataFrame({
-            "target_normalized": targets,
-            "target_original": targets_unscaled,
-            "prediction_normalized": predictions,
-            "prediction_original": predictions_unscaled,
-        })
+        # 'Single' and 'Code' identify the row, so these predictions can be merged against
+        # gnn/infer.py's on the same split - the point of scoring both models on one
+        # held-out double set. Without a key the two files can only be compared in aggregate.
+        # dataset.dms is in loader order because the loader runs with shuffle=False.
+        results_df = dataset.dms[["Single", "Code"]].copy()
+        results_df["Fitness"] = targets_unscaled
+        results_df["baseline_score"] = predictions_unscaled
+        results_df["target_normalized"] = targets
+        results_df["target_original"] = targets_unscaled
+        results_df["prediction_normalized"] = predictions
+        results_df["prediction_original"] = predictions_unscaled
         results_df.to_csv(os.path.join(args.output_dir, f"{args.split}_predictions.csv"), index=False)
 
         with open(os.path.join(args.output_dir, f"{args.split}_summary.json"), "w") as f:

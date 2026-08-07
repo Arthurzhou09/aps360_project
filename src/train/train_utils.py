@@ -109,8 +109,6 @@ def standardize(train_set: pd.DataFrame, val_set: pd.DataFrame|None, test_set: p
     return x_train, x_val, x_test, [train_mean, train_std]
 
 
-
-
 def min_max_normalize(train_set: pd.DataFrame, val_set: pd.DataFrame|None, test_set: pd.DataFrame|None,)-> tuple[pd.DataFrame, pd.DataFrame|None, pd.DataFrame|None, list[float]]:
     """
     Min-max normalize the input array fitness to the range [0, 1].
@@ -156,7 +154,7 @@ def safe_spearman(x, y) -> float:
     y_rank = pd.Series(y).rank().to_numpy()
     return safe_pearson(x_rank, y_rank)
 
-
+# Claude did below
 class IgnoreMetricScheduler:
     """
     Adapter so an epoch-based scheduler survives a training loop that calls
@@ -187,7 +185,7 @@ class IgnoreMetricScheduler:
         return getattr(self.scheduler, name)
 
 
-def build_scheduler(cfg, optimizer, epochs):
+def build_scheduler(cfg, optimizer, epochs): # this is claude
     """
     Build the LR schedule named by cfg.train.scheduler, so the GNN and the MLP baseline can
     be driven by the same field of the same config file. A comparison between two models

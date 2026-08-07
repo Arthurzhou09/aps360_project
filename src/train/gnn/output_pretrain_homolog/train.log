@@ -1,0 +1,170 @@
+split=homolog: train 46668 homologs, val 5834 homologs
+model params: 938k (encoder_rounds=3, decoder_rounds=3
+Using device: cuda
+Epoch 0/100  train 2.6827  val 2.3377  val_acc 0.4059  val_ppl 10.357  lr 5.00e-04
+new model saved (val_loss=2.337673)
+Epoch 1/100  train 2.3240  val 2.1961  val_acc 0.4549  val_ppl 8.990  lr 5.00e-04
+new model saved (val_loss=2.196103)
+Epoch 2/100  train 2.2330  val 2.1274  val_acc 0.4594  val_ppl 8.393  lr 5.00e-04
+new model saved (val_loss=2.127366)
+Epoch 3/100  train 2.1828  val 2.1104  val_acc 0.4608  val_ppl 8.251  lr 5.00e-04
+new model saved (val_loss=2.110391)
+Epoch 4/100  train 2.1650  val 2.1037  val_acc 0.4618  val_ppl 8.196  lr 4.99e-04
+new model saved (val_loss=2.103698)
+Epoch 5/100  train 2.1541  val 2.0954  val_acc 0.4626  val_ppl 8.129  lr 4.98e-04
+new model saved (val_loss=2.095412)
+Epoch 6/100  train 2.1453  val 2.0880  val_acc 0.4634  val_ppl 8.068  lr 4.97e-04
+new model saved (val_loss=2.087962)
+Epoch 7/100  train 2.1369  val 2.0830  val_acc 0.4638  val_ppl 8.028  lr 4.96e-04
+new model saved (val_loss=2.082965)
+Epoch 8/100  train 2.1293  val 2.0739  val_acc 0.4646  val_ppl 7.956  lr 4.94e-04
+new model saved (val_loss=2.073911)
+Epoch 9/100  train 2.1266  val 2.0700  val_acc 0.4652  val_ppl 7.924  lr 4.92e-04
+new model saved (val_loss=2.069956)
+Epoch 10/100  train 2.1199  val 2.0637  val_acc 0.4659  val_ppl 7.875  lr 4.90e-04
+new model saved (val_loss=2.063732)
+Epoch 11/100  train 2.1179  val 2.0613  val_acc 0.4664  val_ppl 7.856  lr 4.88e-04
+new model saved (val_loss=2.061303)
+Epoch 12/100  train 2.1114  val 2.0557  val_acc 0.4672  val_ppl 7.812  lr 4.85e-04
+new model saved (val_loss=2.055688)
+Epoch 13/100  train 2.1076  val 2.0496  val_acc 0.4677  val_ppl 7.765  lr 4.83e-04
+new model saved (val_loss=2.049609)
+Epoch 14/100  train 2.1037  val 2.0456  val_acc 0.4684  val_ppl 7.734  lr 4.80e-04
+new model saved (val_loss=2.045612)
+Epoch 15/100  train 2.0997  val 2.0416  val_acc 0.4691  val_ppl 7.703  lr 4.76e-04
+new model saved (val_loss=2.041636)
+Epoch 16/100  train 2.0957  val 2.0390  val_acc 0.4693  val_ppl 7.683  lr 4.73e-04
+new model saved (val_loss=2.038980)
+Epoch 17/100  train 2.0952  val 2.0344  val_acc 0.4700  val_ppl 7.648  lr 4.69e-04
+new model saved (val_loss=2.034382)
+Epoch 18/100  train 2.0915  val 2.0317  val_acc 0.4706  val_ppl 7.627  lr 4.66e-04
+new model saved (val_loss=2.031665)
+Epoch 19/100  train 2.0868  val 2.0274  val_acc 0.4705  val_ppl 7.594  lr 4.62e-04
+new model saved (val_loss=2.027354)
+Epoch 20/100  train 2.0892  val 2.0273  val_acc 0.4713  val_ppl 7.594  lr 4.57e-04
+new model saved (val_loss=2.027304)
+EarlyStopping counter: 1 out of 8
+Epoch 21/100  train 2.0814  val 2.0224  val_acc 0.4724  val_ppl 7.557  lr 4.53e-04
+new model saved (val_loss=2.022437)
+Epoch 22/100  train 2.0803  val 2.0155  val_acc 0.4730  val_ppl 7.504  lr 4.48e-04
+new model saved (val_loss=2.015496)
+Epoch 23/100  train 2.0764  val 2.0114  val_acc 0.4733  val_ppl 7.474  lr 4.43e-04
+new model saved (val_loss=2.011410)
+Epoch 24/100  train 2.0732  val 2.0075  val_acc 0.4746  val_ppl 7.445  lr 4.38e-04
+new model saved (val_loss=2.007536)
+Epoch 25/100  train 2.0721  val 2.0042  val_acc 0.4746  val_ppl 7.420  lr 4.33e-04
+new model saved (val_loss=2.004239)
+Epoch 26/100  train 2.0700  val 2.0032  val_acc 0.4756  val_ppl 7.413  lr 4.28e-04
+new model saved (val_loss=2.003215)
+Epoch 27/100  train 2.0657  val 1.9984  val_acc 0.4759  val_ppl 7.377  lr 4.22e-04
+new model saved (val_loss=1.998423)
+Epoch 28/100  train 2.0622  val 1.9951  val_acc 0.4769  val_ppl 7.353  lr 4.16e-04
+new model saved (val_loss=1.995148)
+Epoch 29/100  train 2.0619  val 1.9937  val_acc 0.4769  val_ppl 7.343  lr 4.11e-04
+new model saved (val_loss=1.993681)
+Epoch 30/100  train 2.0578  val 1.9904  val_acc 0.4775  val_ppl 7.318  lr 4.05e-04
+new model saved (val_loss=1.990377)
+Epoch 31/100  train 2.0580  val 1.9905  val_acc 0.4779  val_ppl 7.319  lr 3.98e-04
+EarlyStopping counter: 1 out of 8
+Epoch 32/100  train 2.0533  val 1.9850  val_acc 0.4783  val_ppl 7.279  lr 3.92e-04
+new model saved (val_loss=1.985028)
+Epoch 33/100  train 2.0542  val 1.9805  val_acc 0.4795  val_ppl 7.246  lr 3.86e-04
+new model saved (val_loss=1.980451)
+Epoch 34/100  train 2.0496  val 1.9781  val_acc 0.4795  val_ppl 7.229  lr 3.79e-04
+new model saved (val_loss=1.978086)
+Epoch 35/100  train 2.0456  val 1.9753  val_acc 0.4806  val_ppl 7.209  lr 3.72e-04
+new model saved (val_loss=1.975322)
+Epoch 36/100  train 2.0453  val 1.9739  val_acc 0.4805  val_ppl 7.198  lr 3.66e-04
+new model saved (val_loss=1.973853)
+Epoch 37/100  train 2.0426  val 1.9724  val_acc 0.4814  val_ppl 7.188  lr 3.59e-04
+new model saved (val_loss=1.972390)
+Epoch 38/100  train 2.0411  val 1.9676  val_acc 0.4819  val_ppl 7.154  lr 3.52e-04
+new model saved (val_loss=1.967625)
+Epoch 39/100  train 2.0394  val 1.9685  val_acc 0.4823  val_ppl 7.160  lr 3.45e-04
+EarlyStopping counter: 1 out of 8
+Epoch 40/100  train 2.0367  val 1.9628  val_acc 0.4831  val_ppl 7.119  lr 3.37e-04
+new model saved (val_loss=1.962784)
+Epoch 41/100  train 2.0353  val 1.9601  val_acc 0.4833  val_ppl 7.100  lr 3.30e-04
+new model saved (val_loss=1.960141)
+Epoch 42/100  train 2.0341  val 1.9574  val_acc 0.4842  val_ppl 7.081  lr 3.23e-04
+new model saved (val_loss=1.957442)
+Epoch 43/100  train 2.0321  val 1.9575  val_acc 0.4842  val_ppl 7.082  lr 3.15e-04
+EarlyStopping counter: 1 out of 8
+Epoch 44/100  train 2.0323  val 1.9549  val_acc 0.4841  val_ppl 7.063  lr 3.08e-04
+new model saved (val_loss=1.954862)
+Epoch 45/100  train 2.0296  val 1.9574  val_acc 0.4838  val_ppl 7.081  lr 3.00e-04
+EarlyStopping counter: 1 out of 8
+Epoch 46/100  train 2.0275  val 1.9501  val_acc 0.4856  val_ppl 7.029  lr 2.93e-04
+new model saved (val_loss=1.950075)
+Epoch 47/100  train 2.0280  val 1.9488  val_acc 0.4855  val_ppl 7.020  lr 2.85e-04
+new model saved (val_loss=1.948770)
+Epoch 48/100  train 2.0235  val 1.9458  val_acc 0.4864  val_ppl 6.999  lr 2.78e-04
+new model saved (val_loss=1.945803)
+Epoch 49/100  train 2.0207  val 1.9451  val_acc 0.4863  val_ppl 6.994  lr 2.70e-04
+new model saved (val_loss=1.945082)
+EarlyStopping counter: 1 out of 8
+Epoch 50/100  train 2.0210  val 1.9446  val_acc 0.4864  val_ppl 6.991  lr 2.63e-04
+new model saved (val_loss=1.944619)
+Epoch 51/100  train 2.0188  val 1.9432  val_acc 0.4867  val_ppl 6.981  lr 2.55e-04
+new model saved (val_loss=1.943219)
+Epoch 52/100  train 2.0171  val 1.9416  val_acc 0.4871  val_ppl 6.970  lr 2.47e-04
+new model saved (val_loss=1.941646)
+Epoch 53/100  train 2.0159  val 1.9368  val_acc 0.4878  val_ppl 6.937  lr 2.40e-04
+new model saved (val_loss=1.936841)
+Epoch 54/100  train 2.0150  val 1.9358  val_acc 0.4879  val_ppl 6.930  lr 2.32e-04
+new model saved (val_loss=1.935812)
+Epoch 55/100  train 2.0143  val 1.9363  val_acc 0.4884  val_ppl 6.933  lr 2.25e-04
+EarlyStopping counter: 1 out of 8
+Epoch 56/100  train 2.0117  val 1.9336  val_acc 0.4888  val_ppl 6.915  lr 2.17e-04
+new model saved (val_loss=1.933635)
+Epoch 57/100  train 2.0121  val 1.9325  val_acc 0.4889  val_ppl 6.907  lr 2.10e-04
+new model saved (val_loss=1.932464)
+Epoch 58/100  train 2.0093  val 1.9316  val_acc 0.4893  val_ppl 6.900  lr 2.02e-04
+new model saved (val_loss=1.931552)
+EarlyStopping counter: 1 out of 8
+Epoch 59/100  train 2.0089  val 1.9303  val_acc 0.4892  val_ppl 6.891  lr 1.95e-04
+new model saved (val_loss=1.930277)
+Epoch 60/100  train 2.0046  val 1.9298  val_acc 0.4894  val_ppl 6.888  lr 1.88e-04
+new model saved (val_loss=1.929816)
+EarlyStopping counter: 1 out of 8
+Epoch 61/100  train 2.0049  val 1.9274  val_acc 0.4898  val_ppl 6.871  lr 1.80e-04
+new model saved (val_loss=1.927363)
+Epoch 62/100  train 2.0071  val 1.9256  val_acc 0.4901  val_ppl 6.859  lr 1.73e-04
+new model saved (val_loss=1.925610)
+Epoch 63/100  train 2.0044  val 1.9248  val_acc 0.4908  val_ppl 6.853  lr 1.66e-04
+new model saved (val_loss=1.924756)
+EarlyStopping counter: 1 out of 8
+Epoch 64/100  train 2.0033  val 1.9244  val_acc 0.4906  val_ppl 6.851  lr 1.59e-04
+new model saved (val_loss=1.924442)
+Epoch 65/100  train 2.0038  val 1.9209  val_acc 0.4912  val_ppl 6.827  lr 1.53e-04
+new model saved (val_loss=1.920934)
+Epoch 66/100  train 2.0003  val 1.9205  val_acc 0.4911  val_ppl 6.824  lr 1.46e-04
+new model saved (val_loss=1.920510)
+EarlyStopping counter: 1 out of 8
+Epoch 67/100  train 1.9991  val 1.9200  val_acc 0.4913  val_ppl 6.821  lr 1.39e-04
+new model saved (val_loss=1.919955)
+EarlyStopping counter: 2 out of 8
+Epoch 68/100  train 1.9982  val 1.9190  val_acc 0.4913  val_ppl 6.814  lr 1.33e-04
+new model saved (val_loss=1.918993)
+Epoch 69/100  train 1.9984  val 1.9183  val_acc 0.4915  val_ppl 6.809  lr 1.27e-04
+new model saved (val_loss=1.918318)
+EarlyStopping counter: 1 out of 8
+Epoch 70/100  train 1.9967  val 1.9174  val_acc 0.4921  val_ppl 6.803  lr 1.20e-04
+new model saved (val_loss=1.917430)
+Epoch 71/100  train 1.9970  val 1.9177  val_acc 0.4915  val_ppl 6.805  lr 1.14e-04
+EarlyStopping counter: 1 out of 8
+Epoch 72/100  train 1.9955  val 1.9158  val_acc 0.4919  val_ppl 6.792  lr 1.09e-04
+new model saved (val_loss=1.915775)
+Epoch 73/100  train 1.9943  val 1.9163  val_acc 0.4919  val_ppl 6.796  lr 1.03e-04
+EarlyStopping counter: 1 out of 8
+Epoch 74/100  train 1.9950  val 1.9148  val_acc 0.4925  val_ppl 6.785  lr 9.73e-05
+new model saved (val_loss=1.914771)
+Epoch 75/100  train 1.9925  val 1.9145  val_acc 0.4923  val_ppl 6.783  lr 9.19e-05
+new model saved (val_loss=1.914450)
+EarlyStopping counter: 1 out of 8
+Epoch 76/100  train 1.9925  val 1.9123  val_acc 0.4926  val_ppl 6.769  lr 8.67e-05
+new model saved (val_loss=1.912280)
+Epoch 77/100  train 1.9918  val 1.9109  val_acc 0.4931  val_ppl 6.759  lr 8.17e-05
+new model saved (val_loss=1.910912)
+Epoch 78/100  train 1.9923  val 1.9117  val_acc 0.4929  val_ppl 6.765  lr 7.68e-05
+EarlyStopping counter: 1 out of 8

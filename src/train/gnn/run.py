@@ -1,6 +1,5 @@
 import argparse
 import json
-import math
 import pandas as pd
 from torch_geometric.loader import DataLoader
 import torch
@@ -11,10 +10,10 @@ import sys
 sys.path.append(r"C:\Users\Arthur Zhou\GitHub\aps360_project\src")
 from data.tem_beta import Tem1BetaLactamaseDataset
 from data.data_utils import load_cif_structure, parse_structure, load_dms
-from data.split import split_by_structural_position
+from data.split import split_by_structural_position, split_by_random
 from model.gnn import Tem1BetaGNN
 from train.train_utils import (EarlyStopping, standardize, load_config, set_seed,
-                               safe_pearson, safe_spearman)
+                               safe_pearson, safe_spearman, build_scheduler)
 
 
 def _checkpoint(model, label_stats):
@@ -40,11 +39,6 @@ def _checkpoint(model, label_stats):
 
 def evaluate(model, loader, criterion, device):
     """
-    Run the model over a loader and return MSE plus rank/linear correlation, both
-    overall and separately for single and double mutants.
-
-    The per-group split matters whenever singles and doubles are trained together.
-    Double mutants are worse and more. Mean is what the training loop selects on.
 
     returns:
         metrics: dict with loss, spearman/pearson overall, per group, and 'balanced'
@@ -85,13 +79,11 @@ def evaluate(model, loader, criterion, device):
 
 def group_loss_weights(train_df, device):
     """
-    Per-group loss weights that give single and double mutants equal total influence.
-
-    The combined set is 69% doubles / 31% singles, so an unweighted mean loss lets doubles
-    contribute ~2.2x the gradient. 
-
+    loss weights that give single and double mutants equal total influence. (double has more samples than singles)
     returns:
         weights: tensor indexed by the is_single flag (index 0 = double, 1 = single)
+
+    note: this function not realyl used now since we trian on single and infer on double
     """
     counts = {1: int((train_df['Single'] == 1).sum()), 0: int((train_df['Single'] == 0).sum())}
     total = sum(counts.values())
@@ -107,14 +99,7 @@ def train(model, num_epochs, train_loader, val_loader, optimizer, criterion, dev
           early_stopping=None, scheduler=None, grad_clip=None, label_stats=None, group_weights=None):
     """
     trainig loop. use "mean" on mse
-
-    Model selection is on validation Spearman rather than validation MSE: MSE on this
-    target is dominated by the thin high-fitness tail, so the lowest-MSE epoch is not
-    generally the best-ranking one, and ranking is what gets compared to the baseline.
-
-    When singles and doubles are trained together, selection uses the group-BALANCED
-    Spearman (mean of the within-single and within-double values) instead of the combined
-    one, so an epoch is not rewarded for separating the two populations.
+    select on spearman, mean.
     """
     model.to(device)
     train_m = []
@@ -198,10 +183,15 @@ def train(model, num_epochs, train_loader, val_loader, optimizer, criterion, dev
 
 if __name__ == "__main__":
 
-    # input channels is the number of edge attribute features (rbf number(8) * 16 (4*4 atomic positions) = 128)
-    # node in channels: mutation index mask (1) + mutant identity (AAindex(8) + one-hot(20)) +
-    # AAindex property delta (mutant - WT) at the mutated site(s), zero elsewhere (8) +
-    # WT identity one-hot at the mutated site(s), zero elsewhere (20) = 1+28+8+20 = 57
+    # node_in_channels = 41 + 2P   (61 for aaindex8, 83 for pca19)
+    #   mutation mask (1) + mutant identity one-hot (20) + mutant properties (P)
+    #   + property delta mutant-WT, zero off the mutated site(s) (P)
+    #   + WT identity one-hot, zero off the mutated site(s) (20)
+    #   + structural descriptors, same for every sample (4)
+    #
+    # edge_features_dim = 96, or 99 when dci_k is set with dci_add_spatial
+    #   16 ordered CA/N/C/O atom pairs x 6 gaussian RBFs over 2-12A (96)
+    #   + signed DCI coupling for the edge (1) + [from_dci, from_spatial] flags (2)
     parser = argparse.ArgumentParser()
     parser.add_argument("--processed_dms", type=str, required=True, help="Path to the dms directory.")
     parser.add_argument("--config", type=str, required=True, help="Path to the training configuration JSON file.")
@@ -211,16 +201,13 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=1012, help="Random seed for reproducibility.")
 
     parser.add_argument("--no_early_stopping", action="store_true", help="Disable early stopping (on by default).")
+    parser.add_argument("--split", type=str, default="not_random", help="Split to use")
     args = parser.parse_args()
     cfg= load_config(args.config)
 
     set_seed(args.seed)
 
     ### Data Loading ###
-    # split on structural residue index, not the raw 'Ambler Index': the single and pair
-    # experiments use different Experiment Sequences, so the same Ambler Index names a
-    # different residue in each and the old split put 59% of "held-out" val residues in train.
-    # processed_dms is <processed>/single or <processed>/both; the cif sits in <processed>
     pdb_dir = os.path.dirname(args.processed_dms.rstrip("/\\"))
     wt_sequence, _ = parse_structure(
         load_cif_structure(os.path.join(pdb_dir, f"{args.pdb_id}.cif"), args.pdb_id))
@@ -228,9 +215,13 @@ if __name__ == "__main__":
     # load_dms drops WT-to-itself rows,
     dms = load_dms(args.processed_dms, wt_sequence)
 
-    train_df, val_df, _ = split_by_structural_position(
-        dms, wt_sequence, train_frac=cfg.data.train_size, val_frac=cfg.data.val_size, seed=args.seed,
-        n_blocks=getattr(cfg.data, "n_blocks", None))
+    if args.split != "random":
+        train_df, val_df, _ = split_by_structural_position(
+            dms, wt_sequence, train_frac=cfg.data.train_size, val_frac=cfg.data.val_size, seed=args.seed,
+            n_blocks=getattr(cfg.data, "n_blocks", None))
+    else:
+        train_df, val_df, test_df = split_by_random(dms, train_frac=cfg.data.train_size, val_frac=cfg.data.val_size, seed=args.seed)
+
     train_df, val_df, _, label_stats = standardize(train_df, val_df, None)
     print(f"train {len(train_df)} rows, val {len(val_df)} rows; "
           f"label mean/std {label_stats[0]:.4f}/{label_stats[1]:.4f}")
@@ -250,16 +241,24 @@ if __name__ == "__main__":
     val_loader = DataLoader(dataset_val, batch_size=cfg.data.batch_size, shuffle=False,
                             num_workers=cfg.data.num_workers, persistent_workers=cfg.data.num_workers > 0)
 
+    # take the input dims from the data, not the config if mismatched.
+    sample = dataset_train[0]
+    node_in, edge_in = int(sample.node_features.shape[1]), int(sample.distance_features.shape[1])
+    if node_in != cfg.model.node_in_channels or edge_in != cfg.model.edge_features_dim:
+        print(f"note: config says node_in={cfg.model.node_in_channels} "
+              f"edge_in={cfg.model.edge_features_dim}, data says node_in={node_in} "
+              f"edge_in={edge_in}; using the data")
+
     model_gnn = Tem1BetaGNN(
-        node_in_channels=cfg.model.node_in_channels,
-        edge_features_dim=cfg.model.edge_features_dim,
+        node_in_channels=node_in,
+        edge_features_dim=edge_in,
         hidden_channels=cfg.model.hidden_channels,
         reg_hidden_channels=cfg.model.reg_hidden_channels,
         mp_layers=cfg.model.mp_layers,
         head_layers=cfg.model.head_layers,
         dropout=cfg.model.dropout,
-        # mp_rounds is the number of propagate calls (receptive field); mp_layers above is
-        # the depth of the MLP inside one of them. Default 1 reproduces the original model.
+        # mp_rounds is the number of propagate calls (receptive field); 
+        # mp_layers above is the depth of the MLP inside one of them. Default 1 reproduces the original model.
         encoder_rounds=getattr(cfg.model, "encoder_rounds", 1),
         decoder_rounds=getattr(cfg.model, "decoder_rounds", 1),
     )
@@ -272,19 +271,8 @@ if __name__ == "__main__":
 
     optimizer = torch.optim.AdamW(model_gnn.parameters(), lr=cfg.train.lr, weight_decay=cfg.train.weight_decay)
 
-    # linear warmup then cosine decay: the previous constant lr let the model keep
-    # descending into the training set long after val had bottomed out at epoch ~15
-    warmup_epochs = getattr(cfg.train, "warmup_epochs", 3)
-    min_lr_factor = getattr(cfg.train, "min_lr_factor", 0.05)
-
-    def lr_lambda(epoch):
-        if epoch < warmup_epochs:
-            return (epoch + 1) / warmup_epochs
-        progress = (epoch - warmup_epochs) / max(1, cfg.train.epochs - warmup_epochs)
-        return min_lr_factor + (1 - min_lr_factor) * 0.5 * (1 + math.cos(math.pi * progress))
-
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=5,)
-    #torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+    scheduler = build_scheduler(cfg, optimizer, cfg.train.epochs)
+    print(f"scheduler: {getattr(cfg.train, 'scheduler', 'plateau')}")
 
     train(model=model_gnn,
           num_epochs=cfg.train.epochs,

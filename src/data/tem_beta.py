@@ -180,7 +180,7 @@ class Tem1BetaLactamaseDataset(DataClass):
 
         # AAindex property delta (mutant - WT) at the mutated site(s) only, zero elsewhere: a
         # compact signal for what changed (fitness tracks property CHANGES, not absolute mutant
-        # identity) - the same delta_props feature build_mutation_features gives the MLP baseline.
+        # identity
         n_props = len(next(iter(self.aa_to_value.values())))
         delta_features = np.zeros((len(self.wt_sequence), n_props), dtype=float)
         delta_features[node_idx] = self.aa_to_value[RESIDUE_LETTERS[mut_aa_idx]] - self.aa_to_value[RESIDUE_LETTERS[wt_experimental_encoded_sequence[node_idx]]]
@@ -198,12 +198,11 @@ class Tem1BetaLactamaseDataset(DataClass):
         if node_idx_2 is not None:
             wt_onehot_features[node_idx_2] = _one_hot_aa(wt_experimental_encoded_sequence[node_idx_2])
 
-        # first 37 columns (mask + one-hot + AAindex + delta) match HomologMaskedDataset's
-        # layout, so the two models' encoders see the same features in the same order.
-        # structural_features are appended last and are identical for every sample.
+        # first 37 columns (mask + one-hot + AAindex + delta).
+        # structural_features are appended last and are identical for every sample: new remove this
         aaindex_node_features = np.concatenate(
-            [mutation_idx[:,None], aaindex_node_features, delta_features, wt_onehot_features,
-             self.structural_features], axis=1)
+            [mutation_idx[:,None], aaindex_node_features, delta_features, wt_onehot_features,  self.structural_features], axis=1)
+       
 
         protein_graph = ProteinGraphData(
             distance_features=self.distance_features_tensor,
@@ -244,8 +243,6 @@ class MLPDataset(DataClass):
         else:
             raise ValueError(f"unknown aa_features {aa_features!r}; expected 'aaindex8' or 'pca19'")
 
-        # same descriptors the GNN gets, taken at the mutated site(s).
-        self.structural_features = build_structural_features(self.atomic_pos, structure=structure)
 
         # align the experimental sequence with pdb wt. (single and pair)
         if (dms_data['Single'] == 1).any():
@@ -331,18 +328,16 @@ class MLPDataset(DataClass):
 
         # site 2 only exists for pair mutations with a valid adjacent alignment
         site_2_features = np.zeros_like(site_1_features)
-        site_2_structural = np.zeros(self.structural_features.shape[1])
         has_site_2 = False
         if is_pair and (sample['Ambler Index'] + 1) in alignment_mapping:
             node_idx_2 = alignment_mapping[sample['Ambler Index'] + 1]
             wt_aa_2 = wt_experimental_encoded_sequence[node_idx_2]
             mut_aa_2 = RESIDUE_LETTERS.index(code[4])
             site_2_features = build_mutation_features(wt_aa_2, mut_aa_2, self.aa_index, aa_to_value=self.aa_to_value)
-            site_2_structural = self.structural_features[node_idx_2]
+    
             has_site_2 = True
 
-        aaindex_features = np.concatenate([site_1_features, site_2_features, [float(has_site_2)],
-                                           self.structural_features[node_idx], site_2_structural])
+        aaindex_features = np.concatenate([site_1_features, site_2_features, [float(has_site_2)],])
         aaindex_features = torch.tensor(aaindex_features, dtype=torch.float)
         fitness_label = torch.tensor(self.labels[idx], dtype=torch.float)
         # returned so the baseline can report per-group metrics like the GNN does; the model

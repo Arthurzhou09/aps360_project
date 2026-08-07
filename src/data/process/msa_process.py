@@ -2,7 +2,7 @@
 Process a ProteinGym-style a2m MSA (e.g. BLAT_ECOLX_full_11-26-2021_b02.a2m) into the
 form the structure GNN consumes.
 
-Why this exists rather than reusing homolog_process.py: that pipeline reads the Pfam
+homolog_process.py: that pipeline reads the Pfam
 PF00144 *full* alignment, throws the alignment away (extract_family_sequences strips every
 gap), and then re-derives a correspondence per sequence with a pairwise aligner that has no
 substitution matrix. Two things go wrong with that.

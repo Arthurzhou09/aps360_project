@@ -1,8 +1,6 @@
 
 import argparse
-import copy
 import json
-import math
 import pandas as pd
 from torch.utils.data import DataLoader
 import torch
@@ -13,7 +11,7 @@ import sys
 sys.path.append(r"C:\Users\Arthur Zhou\GitHub\aps360_project\src")
 from data.tem_beta import MLPDataset
 from data.data_utils import load_cif_structure, parse_structure, load_dms
-from data.split import split_by_structural_position
+from data.split import split_by_structural_position, split_by_random
 from model.mlp import MLP
 from train.train_utils import (EarlyStopping, standardize, set_seed,
                                safe_pearson, safe_spearman)
@@ -167,9 +165,6 @@ def train(model, num_epochs, train_loader, val_loader, optimizer, criterion, dev
         val_spearman_m.append(metrics["spearman"])
         val_balanced_m.append(metrics["balanced"])
 
-        if scheduler is not None:
-            scheduler.step()
-
         selection_score = metrics["balanced"] if not np.isnan(metrics["balanced"]) else metrics["spearman"]
 
         lr_now = optimizer.param_groups[0]['lr']
@@ -213,22 +208,24 @@ if __name__ == "__main__":
     parser.add_argument("--config", type=str, default=None,
                         help="A GNN config (e.g. configs/gnn_base_pca19.json). The data and split settings "
                              "are read from it so the two runs cannot end up on different held-out residues "
-                             "or different amino-acid features. CLI flags win over it.")
-
+                             "or different amino-acid features")
+    parser.add_argument("--split", type=str, default="structural", choices=["structural", "random"])
     #logging
-    parser.add_argument("--output_dir", type=str, default="./src/train/base/output", help="Directory to save the trained model and logs.")
+    parser.add_argument("--output_dir", type=str, default="./src/train/base/output_final", help="Directory to save the trained model and logs.")
 
-    parser.add_argument("--aa_features", type=str, default="pca19", choices=["aaindex8", "pca19"], help="Per-residue property set. Must match the GNN it is compared against.")
+    # None, not "pca19": a non-None default here would always beat --config, so a config
+    # naming aaindex8 would be silently ignored. The pca19 default lives in DATA_DEFAULTS.
+    parser.add_argument("--aa_features", type=str, default=None, choices=["aaindex8", "pca19"], help="Per-residue property set. Defaults to pca19; must match the GNN it is compared against.")
     parser.add_argument("--train_size", type=float, default=None, help="Fraction of data to use for training.")
     parser.add_argument("--val_size", type=float, default=None, help="Fraction of data to use for validation.")
     parser.add_argument("--batch_size", type=int, default=None, help="Batch size for training and validation.")
-    parser.add_argument("--num_workers", type=int, default=None, help="Number of workers for data loading.")
+    parser.add_argument("--num_workers", type=int, default=0, help="Number of workers for data loading.")
     parser.add_argument("--n_blocks", type=int, default=None, help="Contiguous residue blocks for the split. Must match the GNN run.")
-    parser.add_argument("--seed", type=int, default=None, help="Random seed. Taken from the config's top-level seed when unset.")
+    parser.add_argument("--seed", type=int, default=1012, help="Random seed. Taken from the config's top-level seed when unset.")
 
     # training: the baseline keeps its own optimisation settings
     parser.add_argument("--epochs", type=int, default=40, help="Number of training epochs.")
-    parser.add_argument("--lr", type=float, default=1e-3, help="Learning rate for the optimizer.")
+    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate for the optimizer.")
 
     parser.add_argument("--patience", type=int, default=15, help="Early stopping patience, in epochs without a val Spearman improvement.")
     parser.add_argument("--no_early_stopping", action="store_true", help="Disable early stopping (on by default).")
@@ -237,7 +234,7 @@ if __name__ == "__main__":
     #model
     parser.add_argument("--input_dim", type=int, default=None,
                         help="Number of input features. Derived from the dataset by default; pass only to assert a value.")
-    parser.add_argument("--bottleneck_hidden_dim", type=int, default=64, help="number of final hidden channels")
+    parser.add_argument("--bottleneck_hidden_dim", type=int, default=32, help="number of final hidden channels")
 
     args = parser.parse_args()
     data_cfg = resolve_data_settings(args)
@@ -251,12 +248,16 @@ if __name__ == "__main__":
     pdb_dir = os.path.dirname(args.processed_dms.rstrip("/\\"))
     wt_sequence, _ = parse_structure(load_cif_structure(os.path.join(pdb_dir, f"{args.pdb_id}.cif"), args.pdb_id))
     dms = load_dms(args.processed_dms, wt_sequence)
-    train_df, val_df, _ = split_by_structural_position(
-        dms, wt_sequence, train_frac=data_cfg["train_size"], val_frac=data_cfg["val_size"],
-        seed=args.seed, n_blocks=data_cfg["n_blocks"])
-    train_df, val_df, _, label_stats = standardize(train_df, val_df, None)
-    print(f"train {len(train_df)} rows, val {len(val_df)} rows; "
-          f"label mean/std {label_stats[0]:.4f}/{label_stats[1]:.4f}")
+    if args.split != "random":
+        train_df, val_df, _ = split_by_structural_position(
+            dms, wt_sequence, train_frac=data_cfg["train_size"], val_frac=data_cfg["val_size"],
+            seed=args.seed, n_blocks=data_cfg["n_blocks"])
+        train_df, val_df, _, label_stats = standardize(train_df, val_df, None)
+        print(f"train {len(train_df)} rows, val {len(val_df)} rows; "
+            f"label mean/std {label_stats[0]:.4f}/{label_stats[1]:.4f}")
+    else:
+        train_df, val_df, test_df = split_by_random(dms, train_frac=data_cfg["train_size"], val_frac=data_cfg["val_size"], seed=args.seed)
+        train_df, val_df, _, label_stats = standardize(train_df, val_df, test_df)
 
     dataset_train = MLPDataset(dms_data=train_df, pdb_id=args.pdb_id, aa_features=data_cfg["aa_features"])
     train_loader = DataLoader(dataset_train, batch_size=data_cfg["batch_size"], shuffle=True, num_workers=data_cfg["num_workers"])
@@ -281,7 +282,7 @@ if __name__ == "__main__":
     print(f"Using device: {device}")
     os.makedirs(args.output_dir, exist_ok=True)
 
-    optimizer = torch.optim.AdamW(model_mlp.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(model_mlp.parameters(), lr=args.lr, weight_decay=0.01)
 
 
     train(model=model_mlp,
@@ -293,7 +294,7 @@ if __name__ == "__main__":
             device=device,
             output_dir=args.output_dir,
             scheduler=None,
-            grad_clip=args.grad_clip if args.grad_clip > 0 else None,
+            grad_clip=1.0,
             label_stats=label_stats,
             # matches the GNN's train.group_balance; skipped when only one group is present
             group_weights=(group_loss_weights(train_df, device)

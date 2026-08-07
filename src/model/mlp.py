@@ -15,9 +15,7 @@ class MLP(nn.Module):
         self.fcl = nn.Sequential(
             nn.Linear(input_dim, bottleneck_hidden_dim),
             nn.SiLU(),
-            nn.Linear(bottleneck_hidden_dim, bottleneck_hidden_dim),
-            nn.SiLU(),
-            nn.Linear(bottleneck_hidden_dim, 1)
+            nn.Linear(bottleneck_hidden_dim, 1),
         )
 
     def forward(self, x):

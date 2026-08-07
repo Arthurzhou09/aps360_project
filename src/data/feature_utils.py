@@ -267,7 +267,7 @@ def build_dci_edge_index(structure, k: int = 12, threshold: float = None, cache_
 			raise ValueError(f"DCI threshold {threshold} kept no edges; the maximum ranked score "
 							 f"on this structure is {ranked[np.isfinite(ranked)].max():.3f}")
 
-	# out-degree is the diagnostic that matters: a healthy coupling graph spreads driving
+	# A healthy coupling graph spreads driving
 	# across the structure, a degenerate one routes most edges through a few hubs
 	in_degree = np.bincount(responders, minlength=n_residues)
 	out_degree = np.bincount(drivers, minlength=n_residues)
@@ -306,8 +306,6 @@ def build_structural_features(atomic_positions: np.ndarray, structure=None, chai
 	distances = np.linalg.norm(ca[:, None, :] - ca[None, :, :], axis=-1)
 	np.fill_diagonal(distances, np.inf) # a residue is not its own contact
 
-	contact_8 = (distances < 8.0).sum(1).astype(float)
-	contact_12 = (distances < 12.0).sum(1).astype(float)
 	distance_to_active_site = np.linalg.norm(ca - ca[active_site_index], axis=1)
 
 	sasa = np.zeros(len(ca), dtype=float)
@@ -316,7 +314,8 @@ def build_structural_features(atomic_positions: np.ndarray, structure=None, chai
 		values = [r.sasa for r in structure[0][chain_id].get_residues() if r.id[0] == " " and hasattr(r, "sasa")]
 		sasa[:min(len(values), len(ca))] = values[:len(ca)]
 
-	features = np.column_stack([contact_8, contact_12, sasa, distance_to_active_site])
+	# try withotu stuff
+	features = np.column_stack([sasa, distance_to_active_site])
 	# raw ranges differ by magnitudes, so an unstandardized SASA would dominate input_proj 
 	spread = features.std(0)
 	spread[spread == 0] = 1.0

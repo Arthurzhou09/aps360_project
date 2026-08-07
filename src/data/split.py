@@ -16,16 +16,10 @@ def get_positions(code):
 
 def row_structural_positions(df, wt_sequence) -> pd.Series:
     """
-    Map every DMS row to the set of *structural* residue indices (0..len(wt_sequence)-1)
+    map every DMS row to the set of *structural* residue indices (0..len(wt_sequence)-1)
     it mutates.
 
-    This exists because 'Ambler Index' is an index into the row's own
-    'Experiment Sequence', and the single-mutant and pair-mutant experiments use
-    *different* sequences (287 vs 281 aa for TEM-1). 187 of 258 shared Ambler indices
-    therefore point at a different residue depending on the row's 'Single' value, so
-    grouping on the raw index does not group by position at all - it leaks residues
-    across splits. Aligning each experiment onto the PDB WT first gives a key that
-    actually identifies a residue.
+    ambler index is an index into the row's own experiment sequence and the single-mutant and pair-mutant experiments use different sequences (287 vs 281). Don't want leakage!
 
     args:
         df: dms_processed.csv format, with 'Single', 'Ambler Index' and 'Experiment Sequence'
@@ -63,11 +57,7 @@ def split_by_structural_position(
     n_blocks=None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    Position-held-out split keyed on structural residue index rather than 'Ambler Index'
-    (see row_structural_positions for why the raw index leaks).
-
-    Two grouping modes:
-
+    Position-held-out split keyed on structural residue index rather than Ambler index.
     - n_blocks=None: each residue is assigned independently, like the original
       split_by_position. Correct and lossless for single mutants.
     - n_blocks=K: residues are grouped into K *contiguous* segments and whole segments
@@ -159,12 +149,7 @@ def split_by_structural_position(
 def describe_split(train, val, test):
     """
     Print each split's single/double composition and warn if a group is missing or thin.
-
-    Blocks are assigned to balance total row counts, not group counts, so a split could in
-    principle end up with too few of one group to compute a within-group correlation - and
-    the per-group metrics are exactly what makes a combined single+double run interpretable
-    (a mutation counter alone scores ~0.32 combined Spearman). Worth catching at split time
-    rather than as a nan halfway through training.
+    Good to know before I sstart running a bunch of stuff and waiting.
     """
     print(f"{'split':6s} {'rows':>7s} {'single':>8s} {'double':>8s}")
     for name, part in (('train', train), ('val', val), ('test', test)):
@@ -179,54 +164,88 @@ def describe_split(train, val, test):
                       f"within-group correlation is undefined for it")
 
 
-def split_by_position(
+def held_out_doubles(
+    df,
+    wt_sequence,
+    train_frac=0.8,
+    val_frac=0.1,
+    seed=1012,
+    n_blocks=None,
+    scope="unseen",
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+   split double mutatns for testing on single mutant trained set
+    "unseen" - keep only doubles with neither residue in the training split.
+    "all"   - all
+
+    args:
+        df: dms_processed.csv format holding BOTH singles and doubles (processed/both)
+        wt_sequence: reference (PDB) WT sequence
+        scope: "unseen" or "all"
+    returns:
+        doubles: the selected double-mutant rows
+        reference_train: the single-mutant training split, to standardize labels against
+    """
+    if scope not in ("unseen", "all"):
+        raise ValueError(f"unknown scope {scope!r}; expected 'unseen' or 'all'")
+
+    singles = df[df['Single'] == 1].reset_index(drop=True)
+    doubles = df[df['Single'] == 0].reset_index(drop=True)
+    if singles.empty:
+        raise ValueError("no single mutants in this dms, so the training split cannot be "
+                         "rebuilt; point --processed_dms at the combined 'both' directory")
+    if doubles.empty:
+        raise ValueError("no double mutants in this dms; point --processed_dms at the "
+                         "combined 'both' directory")
+
+
+    reference_train, _, _ = split_by_structural_position(
+        singles, wt_sequence, train_frac=train_frac, val_frac=val_frac,
+        seed=seed, n_blocks=n_blocks)
+
+    positions = row_structural_positions(doubles, wt_sequence)
+    aligned = positions.apply(len) > 0
+    if scope == "all":
+        keep = aligned
+    else:
+        train_residues = {n for s in row_structural_positions(reference_train, wt_sequence) for n in s}
+        keep = aligned & positions.apply(lambda s: not (s & train_residues))
+
+    selected = doubles[keep].reset_index(drop=True)
+    print(f"held_out_doubles(scope={scope!r}, seed={seed}): kept {len(selected)}/{len(doubles)} "
+          f"doubles ({int((~aligned).sum())} did not align onto the structure)")
+    if len(selected) < 2:
+        raise ValueError(f"only {len(selected)} doubles survived scope={scope!r}; "
+                         "a rank correlation needs at least 2 rows")
+    return selected, reference_train
+
+
+def split_by_random(
     df,
     train_frac=0.8,
     val_frac=0.1,
     seed=1012,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """
-    DEPRECATED - use split_by_structural_position, which keys on the structural residue
-    index instead of the raw 'Ambler Index'. This version leaks residues across splits
-    whenever single and pair mutants are mixed, and silently drops every double mutant
-    that straddles a split. Kept only so existing notebooks keep running.
-
-    Split the dms data by mutation position. All mutations in the same residue position will be
-    in the same split.
-
+    random splits
     returns:
         train_df, val_df, test_df
     """
     df = df.copy()
 
-    df["positions"] = df.apply(lambda x: [x['Ambler Index']] if x['Single'] ==1 else [x['Ambler Index'], x['Ambler Index'] + 1], axis=1)
-
-    # unique residue positions as a set
-    all_positions = sorted(
-        {p for lst in df.positions for p in lst}
-    )
-
+    n_samples = len(df)
+    arr = np.arange(n_samples)
     rng = np.random.default_rng(seed)
-    rng.shuffle(all_positions)
-    n = len(all_positions)
+    rng.shuffle(arr)
 
-    train_pos = set(all_positions[:int(train_frac*n)])
-    val_pos = set(all_positions[int(train_frac*n):
-                                int((train_frac+val_frac)*n)])
-    test_pos = set(all_positions[int((train_frac+val_frac)*n):])    
-
-    # check if mutated positions are contained within their repspective sets
-    train_mask = df.positions.apply(lambda x: set(x) <= train_pos)
-    val_mask   = df.positions.apply(lambda x: set(x) <= val_pos)
-    test_mask  = df.positions.apply(lambda x: set(x) <= test_pos)
-
-    train = df[train_mask].reset_index(drop=True)
-    val = df[val_mask].reset_index(drop=True)
-    test = df[test_mask].reset_index(drop=True)
+    train = df.iloc[arr[:int(train_frac*n_samples)]].reset_index(drop=True)
+    val = df.iloc[arr[int(train_frac*n_samples):int((train_frac+val_frac)*n_samples)]].reset_index(drop=True)
+    test = df.iloc[arr[int((train_frac+val_frac)*n_samples):]].reset_index(drop=True)
 
     return train, val, test
 
 
+### -- all stuff for homologs and SSL ---- Most of it was coded with Claude -> not used anymore
 
 def _build_kmers(sequence: str, k: int = 5) -> set:
     """

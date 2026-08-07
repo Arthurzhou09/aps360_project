@@ -14,16 +14,9 @@ from train.train_utils import safe_pearson, safe_spearman
 
 def score_dms_data(dms_data, alignment_mappings, wt_experimental_encoded_sequences, pssm):
     """
-    Conservation-based heuristic score, one row per scoreable DMS mutation:
+    Conservation-based score, one row per scoreable DMS mutation:
     log(freq(mutant)) - log(freq(WT)) at each mutated position, summed across sites
-    (single: 1 site, pair: 2 sites) - the same additive convention used for the GNN's
-    zero-shot score, so the two are directly comparable. Mirrors exactly how
-    positions/mutant identities are parsed in HomologMaskedDataset's test mode.
-
-    Rows dropped: those whose position(s) don't align to the WT structure, and those that
-    do not change any residue (see real_mutation_mask - a log-ratio score is identically 0
-    for those and their fitness is WT-level, which inflates Spearman by ~0.08).
-    gnn/infer_zero_shot.py applies the same mask, so both report on the same rows.
+    single: 1 site, pair: 2 sites.
 
     args:
         dms_data: DataFrame in dms_processed.csv format
