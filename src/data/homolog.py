@@ -40,7 +40,8 @@ class HomologMaskedDataset(DataClass):
     """
 
     def __init__(self, homolog_data: pd.DataFrame = None, dms_data: pd.DataFrame = None, pdb_id: str = "1BTL",
-                 test: bool = False, directed=True, max_neighbours=16, seed=1012, mask_ratio: float = 0.15):
+                 test: bool = False, directed=True, max_neighbours=16, seed=1012, mask_ratio: float = 0.15,
+                 radius: float = None):
         self.wt_sequence, self.atomic_pos = parse_structure(load_cif_structure(f"{PROCESSED_DATA_DIR}/{pdb_id}.cif", pdb_id))
         self.wt_sequence_encoded = np.array([RESIDUE_LETTERS.index(i) for i in self.wt_sequence])
         self.aa_index = pd.read_csv(f"{PROCESSED_DATA_DIR}/aa_index_data.csv")
@@ -52,8 +53,8 @@ class HomologMaskedDataset(DataClass):
         self._epoch = 0
 
         # static features shared across all samples: same WT structure graph.
-        self.distance_features = build_distance_features(self.atomic_pos, k=max_neighbours, directed=directed)
-        self.edge_index = build_backbone_edge_index(self.atomic_pos, k=max_neighbours, directed=directed)
+        self.distance_features = build_distance_features(self.atomic_pos, k=max_neighbours, directed=directed, radius=radius)
+        self.edge_index = build_backbone_edge_index(self.atomic_pos, k=max_neighbours, directed=directed, radius=radius)
         self.distance_features_tensor = torch.tensor(self.distance_features, dtype=torch.float)
         self.edge_index_tensor = torch.tensor(self.edge_index, dtype=torch.long)
         self.wt_sequence_encoded_tensor = torch.tensor(self.wt_sequence_encoded, dtype=torch.long)
@@ -129,12 +130,6 @@ class HomologMaskedDataset(DataClass):
         """
         AAindex property delta of the sequence being shown against the structure's own
         (PDB WT) residue at each position, zero wherever they agree.
-
-        Same feature Tem1BetaGNN gets, under the same definition - "how does the sequence
-        threaded onto this structure differ from the structure's native residue here" -
-        which for a mutant sequence is nonzero only at the mutated sites, and for a homolog
-        is nonzero wherever it has diverged. Masked and unaligned positions (encoded -1)
-        stay zero: their identity is the label, so a nonzero delta there would leak it.
 
         args:
             visible_encoded_sequence: encoded residues (0-19), -1 at masked/unaligned positions

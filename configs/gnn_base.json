@@ -1,8 +1,7 @@
 {
   "seed": 1012,
-
   "model": {
-    "node_in_channels": 57,
+    "node_in_channels": 61,
     "edge_features_dim": 128,
     "hidden_channels": 64,
     "reg_hidden_channels": 32,
@@ -10,22 +9,19 @@
     "head_layers": 2,
     "dropout": 0.2
   },
-
   "train": {
-    "lr": 0.00005,
+    "lr": 5e-05,
     "epochs": 100,
-    "weight_decay": 0.00001
+    "weight_decay": 1e-05
   },
-
   "data": {
     "neighbours": 20,
     "shuffle": true,
     "num_workers": 4,
-    "train_size":0.8,
-    "val_size":0.1,
+    "train_size": 0.8,
+    "val_size": 0.1,
     "batch_size": 32
   },
-
   "logging": {
     "output_dir": "./src/train/gnn/output"
   }

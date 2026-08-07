@@ -1,3 +1,4 @@
+import math
 import json
 import os
 import random
@@ -86,15 +87,7 @@ def standardize(train_set: pd.DataFrame, val_set: pd.DataFrame|None, test_set: p
     """
     Z-score the fitness label using train-set statistics.
 
-    Preferred over min_max_normalize for this data. TEM-1 fitness is bimodal (dead vs
-    WT-like) with a thin tail out to 2.90 while the 90th percentile is ~1.05, so
-    dividing by (max - min) squashes 90% of the labels into [0, 0.36]. That leaves the
-    target variance at ~0.022, which (a) makes MSE numbers unreadable - a constant
-    predictor already scores 0.020, so "loss 0.010" is really R^2 ~= 0.5 - and (b) shrinks
-    the gradient scale, so lr and weight_decay end up tuned against an arbitrary
-    constant. After z-scoring, a constant predictor scores 1.0 and MSE reads directly
-    as 1 - R^2.
-
+    Preferred over min_max_normalize for this data. TEM-1 fitness is bimodal (good vs bad).
     args:
         train_set/val_set/test_set: DataFrames with a 'Fitness' column
     returns:
@@ -114,8 +107,6 @@ def standardize(train_set: pd.DataFrame, val_set: pd.DataFrame|None, test_set: p
         x_test['Fitness'] = (test_set['Fitness'] - train_mean) / train_std
 
     return x_train, x_val, x_test, [train_mean, train_std]
-
-
 
 
 def min_max_normalize(train_set: pd.DataFrame, val_set: pd.DataFrame|None, test_set: pd.DataFrame|None,)-> tuple[pd.DataFrame, pd.DataFrame|None, pd.DataFrame|None, list[float]]:
@@ -162,3 +153,71 @@ def safe_spearman(x, y) -> float:
     x_rank = pd.Series(x).rank().to_numpy()
     y_rank = pd.Series(y).rank().to_numpy()
     return safe_pearson(x_rank, y_rank)
+
+# Claude did below
+class IgnoreMetricScheduler:
+    """
+    Adapter so an epoch-based scheduler survives a training loop that calls
+    `scheduler.step(val_loss)` - a ReduceLROnPlateau signature. Both run.py's and
+    baseline.py's loops do this.
+
+    Handing a LambdaLR to that call does not raise. Torch reads the positional argument as
+    the epoch index, so the schedule ends up indexed by the validation loss VALUE. Measured
+    against a real curve, a warmup+cosine schedule that should step
+
+        3.3e-4 -> 6.7e-4 -> 1.0e-3 -> 1.0e-3 -> 9.98e-4
+
+    instead produces
+
+        3.3e-4 -> 5.1e-4 -> 5.1e-4 -> 5.4e-4 -> 5.2e-4
+
+    - no warmup, no decay, silently, forever. This wrapper drops the metric and steps by
+    epoch, which is what the cosine lr_lambda was written to do.
+    """
+
+    def __init__(self, scheduler):
+        self.scheduler = scheduler
+
+    def step(self, metric=None):
+        self.scheduler.step()
+
+    def __getattr__(self, name):
+        return getattr(self.scheduler, name)
+
+
+def build_scheduler(cfg, optimizer, epochs): # this is claude
+    """
+    Build the LR schedule named by cfg.train.scheduler, so the GNN and the MLP baseline can
+    be driven by the same field of the same config file. A comparison between two models
+    trained under different LR schedules measures the schedules as much as the models.
+
+    args:
+        cfg: Config with a .train section (scheduler, warmup_epochs, min_lr_factor)
+        optimizer: optimizer to schedule
+        epochs: total planned epochs, needed to size the cosine decay
+    returns:
+        scheduler with a .step(metric) signature, or None
+    """
+    kind = getattr(cfg.train, "scheduler", "plateau")
+
+    if kind == "none":
+        return None
+
+    if kind == "plateau":
+        # note this reduces on val MSE while epochs are SELECTED on val Spearman; the two
+        # disagree on this target, so which one to use is a real choice, not a formality
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min", factor=0.1, patience=5)
+
+    if kind == "cosine":
+        warmup = getattr(cfg.train, "warmup_epochs", 3)
+        min_factor = getattr(cfg.train, "min_lr_factor", 0.05)
+
+        def lr_lambda(epoch):
+            if epoch < warmup:
+                return (epoch + 1) / warmup
+            progress = (epoch - warmup) / max(1, epochs - warmup)
+            return min_factor + (1 - min_factor) * 0.5 * (1 + math.cos(math.pi * progress))
+
+        return IgnoreMetricScheduler(torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda))
+
+    raise ValueError(f"unknown train.scheduler {kind!r}; expected 'cosine', 'plateau' or 'none'")

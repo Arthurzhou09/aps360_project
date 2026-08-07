@@ -1,0 +1,10 @@
+{
+  "split": "random",
+  "loss": 0.7472747849817035,
+  "baseline_loss": 0.957064688205719,
+  "pearson_r": 0.47278219745788835,
+  "spearman_rho": 0.46852742041175516,
+  "n_samples": 476,
+  "spearman_single": 0.46852742041175516,
+  "n_single": 476
+}

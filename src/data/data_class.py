@@ -75,6 +75,7 @@ class ProteinGraphData(Data):
         edge_index=None,
         mutation_idx=None,
         fitness=None,
+        is_single=None,
     ):
         """
         A class representing single or pairwise mutation data.
@@ -86,6 +87,11 @@ class ProteinGraphData(Data):
             edge_index: Edge indices representing the connectivity of residues, expected shape [2, E]
             mutation_index: Mask indicating mutation positions in the sequence, expected shape [N,]
             fitness: Fitness value for the mutation(s).
+            is_single: 1 for a single mutant, 0 for a double. Carried per graph so training
+                and inference can report metrics WITHIN each group. A combined Spearman is
+                not a clean measure of residue-level understanding: double mutants are
+                systematically more damaging (mean standardized fitness -0.26 vs +0.34 on
+                the test split), so simply counting the mutations scores ~0.32 on its own.
         """
         super(ProteinGraphData, self).__init__()
         if distance_features is not None:
@@ -100,6 +106,8 @@ class ProteinGraphData(Data):
             self.mutation_idx = mutation_idx
         if fitness is not None:
             self.fitness = fitness
+        if is_single is not None:
+            self.is_single = is_single
 
 
 class HomologGraphData(Data):

@@ -10,6 +10,8 @@ from torch_geometric.loader import DataLoader
 
 sys.path.append(r"C:\Users\Arthur Zhou\GitHub\aps360_project\src")
 from data.homolog import HomologMaskedDataset
+from data.msa import MSAMaskedDataset
+from data.data_utils import load_cif_structure, parse_structure, align_dms_experiment_sequences, real_mutation_mask
 from model.gnn import Tem1MaskedResidueGNN
 from train.train_utils import load_config, safe_pearson, safe_spearman
 
@@ -76,6 +78,10 @@ if __name__ == "__main__":
 
     parser.add_argument("--pdb_id", type=str, default="1BTL", help="PDB ID for the protein structure.")
     parser.add_argument("--directed", action="store_true", help="Whether to create directed edges in the graph. Must match training. False if not specified.")
+    parser.add_argument("--source", type=str, default="homolog", choices=["homolog", "msa"],
+                        help="Which dataset the checkpoint was pretrained on. Must match pretrain.py's --source.")
+    parser.add_argument("--msa_dir", type=str, default="./src/data/processed/msa",
+                        help="Directory holding msa_columns.csv (--source msa only).")
 
     parser.add_argument("--output_dir", type=str, default="./src/train/gnn/output_pretrain/zero_shot", help="Directory to save zero-shot scoring results.")
     parser.add_argument("--dont_save_results", action="store_true", help="Skip saving predictions/summary to output_dir.")
@@ -86,8 +92,28 @@ if __name__ == "__main__":
     # data load: dms_processed.csv (single and/or pair mutants), scored zero-shot - never
     # used for training, so there is no train/val/test split to worry about here.
     dms_df = pd.read_csv(os.path.join(args.processed_dms, "dms_processed.csv"))
-    dataset = HomologMaskedDataset(dms_data=dms_df, pdb_id=args.pdb_id, test=True, directed=args.directed, max_neighbours=cfg.data.neighbours)
-    data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=4)
+
+    # drop the rows that don't change any residue. log P(mutant) - log P(WT) is identically
+    # 0 for those while their fitness is WT-level, so they add ~0.08 Spearman of free
+    # signal. evolutionary/infer.py drops the same rows, so the two numbers stay comparable.
+    pdb_dir = os.path.dirname(args.processed_dms.rstrip("/\\"))
+    wt_sequence, _ = parse_structure(load_cif_structure(os.path.join(pdb_dir, f"{args.pdb_id}.cif"), args.pdb_id))
+    alignment_mappings, wt_encoded = align_dms_experiment_sequences(dms_df, wt_sequence)
+    keep = real_mutation_mask(dms_df, alignment_mappings, wt_encoded)
+    print(f"scoring {int(keep.sum())} real mutations ({len(dms_df) - int(keep.sum())} rows dropped: unaligned or no residue change)")
+    dms_df = dms_df.loc[keep].reset_index(drop=True)
+
+    # the dataset has to match what the checkpoint was pretrained on: MSAMaskedDataset emits
+    # 38 node channels (the extra one flags MSA coverage) and only models the structure
+    # nodes that carry a match column, so feeding a 38-channel model the 37-channel homolog
+    # features - or vice versa - fails on input_proj's shape.
+    if args.source == "msa":
+        column_map = pd.read_csv(os.path.join(args.msa_dir, "msa_columns.csv"))
+        dataset = MSAMaskedDataset(dms_data=dms_df, column_map=column_map, pdb_id=args.pdb_id, test=True,
+                                   directed=args.directed, max_neighbours=cfg.data.neighbours, radius=getattr(cfg.data, "radius", None))
+    else:
+        dataset = HomologMaskedDataset(dms_data=dms_df, pdb_id=args.pdb_id, test=True, directed=args.directed, max_neighbours=cfg.data.neighbours, radius=getattr(cfg.data, "radius", None))
+    data_loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
 
     # model load
     checkpoint = torch.load(args.model_path, weights_only=True)
@@ -100,12 +126,21 @@ if __name__ == "__main__":
         mp_layers=model_hps['mp_layers'],
         head_layers=model_hps['head_layers'],
         dropout=model_hps.get('dropout', 0.0),
-        encoder_rounds = model_hps['encoder_rounds'],
-        decoder_rounds = model_hps['decoder_rounds']
+        # checkpoints predating mp_rounds have neither key and were single-round
+        encoder_rounds = model_hps.get('encoder_rounds', 1),
+        decoder_rounds = model_hps.get('decoder_rounds', 1)
     )
     model.load_state_dict(checkpoint['model_state'])
 
-    device = "cpu" #torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # fail loudly on a source/checkpoint mismatch rather than deep inside input_proj
+    produced = dataset[0].node_features.shape[1]
+    if produced != model_hps['node_in_channels']:
+        raise ValueError(
+            f"--source {args.source} produces {produced} node channels but the checkpoint expects "
+            f"{model_hps['node_in_channels']}. An MSA-pretrained model needs --source msa (38 channels); "
+            f"a homolog-pretrained one needs --source homolog (37).")
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
     scores, fitness, accuracy = run_zero_shot_inference(model, data_loader, device)
